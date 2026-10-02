@@ -1216,6 +1216,28 @@ input {
     0 0 18px rgba(255, 255, 255, 0.9);
   animation: pop 0.45s cubic-bezier(0.3, 1.8, 0.5, 1);
 }
+.splat em {
+  position: absolute;
+  left: 50%;
+  top: 64%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #fff;
+  color: #3b6f91;
+  font-style: normal;
+  font-weight: 700;
+  font-size: clamp(15px, 3.4vw, 22px);
+  white-space: nowrap;
+  box-shadow: 0 4px 0 #9ccbe8;
+  animation: pop 0.45s cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+.splat em:empty {
+  display: none;
+}
+.splat.again {
+  animation: splat-in 0.25s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
 .splat.off {
   opacity: 0;
   transform: scale(1.06) translateY(8px);
@@ -1545,5 +1567,47 @@ button,
   }
   .cell {
     font-size: calc(var(--size) / 13);
+  }
+}
+
+/* 맞은 상대의 리액션 말풍선 */
+.say {
+  position: fixed;
+  z-index: 35;
+  transform: translate(-50%, calc(-100% - 8px));
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  border: 2px solid var(--own);
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 0 var(--own);
+  animation: say-in 0.35s cubic-bezier(0.3, 1.8, 0.5, 1);
+  transition:
+    opacity 0.35s,
+    transform 0.35s;
+}
+.say::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-right: 2px solid var(--own);
+  border-bottom: 2px solid var(--own);
+  transform: translateX(-50%) rotate(45deg);
+}
+.say.off {
+  opacity: 0;
+  transform: translate(-50%, calc(-100% - 20px));
+}
+@keyframes say-in {
+  from {
+    transform: translate(-50%, -40%) scale(0.4);
   }
 }

@@ -17,7 +17,7 @@ export const isRace = (r: Rule) => r !== 'claim';
 export const RULES: Record<Rule, { label: string; desc: string }> = {
   claim: { label: '점령형', desc: '한 판을 같이 채워요. 맞히면 +1, 틀리면 -1 에 2초 정지. 판이 다 차면 점수가 높은 사람이 승리!' },
   race: { label: '레이스형', desc: '같은 퍼즐을 각자 풀어요. 기록 = 완주 시간 + 실수당 10초. 모두 끝나면 순위 발표!' },
-  item: { label: '아이템전', desc: '레이스형 + 5초 안에 3연속으로 맞히면 1등에게 침 퉤! 맞은 사람은 1초 동안 판이 안 보여요. 실수당 +10초.' },
+  item: { label: '아이템전', desc: '레이스형 + 5초 안에 3연속으로 맞히면 1등에게 침 퉤! 맞은 사람은 1.5초 동안 판이 안 보여요(또 맞으면 늘어나요). 실수당 +10초.' },
 };
 
 export const MAX_PLAYERS = 3;
@@ -45,7 +45,8 @@ export type Msg =
   | { t: 'gaveup'; id: number }
   /** 아이템전: 게스트 → 방장 콤보 공격, 방장 → 모두 누가 누구에게 */
   | { t: 'attack' }
-  | { t: 'spit'; from: number; to: number }
+  /** say = 맞은 사람 리액션 번호 (SPIT_REACTIONS) */
+  | { t: 'spit'; from: number; to: number; say: number }
   | { t: 'place'; cell: number; v: number; hint: boolean }
   | { t: 'claim'; cell: number; id: number; hint: boolean }
   | { t: 'miss'; cell: number; id: number }

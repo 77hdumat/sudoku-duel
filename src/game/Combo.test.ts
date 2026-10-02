@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ATTACK_COMBO, COMBO_WINDOW_MS, ComboMeter, pickTarget } from './Combo';
+import { ATTACK_COMBO, COMBO_WINDOW_MS, ComboMeter, pickTarget, SPIT_MS, SPIT_REACTIONS, spitUntil } from './Combo';
 
 describe('ComboMeter', () => {
   it(`빠르게 ${ATTACK_COMBO}연속이면 공격, 그 뒤 다시 처음부터`, () => {
@@ -35,6 +35,17 @@ describe('ComboMeter', () => {
     m.hit(0);
     expect(m.left(COMBO_WINDOW_MS / 2)).toBeCloseTo(0.5);
     expect(m.left(COMBO_WINDOW_MS * 2)).toBe(0);
+  });
+});
+
+describe('침', () => {
+  it('처음 맞으면 SPIT_MS, 가려진 채로 또 맞으면 남은 시간에 더해진다', () => {
+    expect(spitUntil(1000, 0)).toBe(1000 + SPIT_MS);
+    expect(spitUntil(1000, 1500)).toBe(1500 + SPIT_MS);
+  });
+
+  it('리액션 문구는 10개', () => {
+    expect(SPIT_REACTIONS).toHaveLength(10);
   });
 });
 

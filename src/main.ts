@@ -1,7 +1,7 @@
 import './style.css';
 import { AI_PROFILES, AiSolver } from './game/Ai';
 import { ClaimJudge, type ClaimEvent } from './game/Claim';
-import { ATTACK_COMBO, ComboMeter, pickTarget, SPIT_MS } from './game/Combo';
+import { ATTACK_COMBO, ComboMeter, pickTarget, SPIT_MS, SPIT_REACTIONS, spitUntil } from './game/Combo';
 import { finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './game/Ranking';
 import { fromStr, generate, HINTS, LEVELS, solve, toStr, type Grid, type Level } from './game/Sudoku';
 import { Fx } from './fx/Fx';
@@ -218,16 +218,58 @@ function splatSvg(): string {
   </svg>`;
 }
 
-/** el(보드·미리보기) 위에 침을 덮었다가 ms 뒤 걷는다 */
-function spitOn(el: Element | null, big: boolean, ms = SPIT_MS): void {
+/** 요소별 지금 덮여 있는 침과 걷힐 시각 */
+const splats = new WeakMap<Element, { d: HTMLElement; until: number; timer: ReturnType<typeof setTimeout> }>();
+
+/**
+ * el(보드·미리보기) 위에 침을 덮는다. 이미 덮여 있으면 새로 겹치지 않고 걷히는 시각만 뒤로 민다.
+ * until 을 주면 그 시각까지(미리보기를 다시 그릴 때 남은 시간 이어 붙이기용).
+ */
+function spitOn(el: Element | null, big: boolean, say = '', until?: number): void {
   if (!el) return;
-  const d = document.createElement('div');
-  d.className = `splat${big ? ' big' : ''}`;
-  d.innerHTML = splatSvg() + (big ? '<b>퉤!</b>' : '');
-  el.appendChild(d);
-  setTimeout(() => d.classList.add('off'), ms);
-  setTimeout(() => d.remove(), ms + 400);
+  const now = performance.now();
+  const cur = splats.get(el);
+  const live = cur && cur.d.isConnected && !cur.d.classList.contains('off');
+  const end = until ?? spitUntil(now, live ? cur!.until : 0);
+  let d: HTMLElement;
+  if (live) {
+    d = cur!.d;
+    clearTimeout(cur!.timer);
+    // 또 맞았다 — 자국을 한 번 더 출렁이게
+    d.classList.remove('again');
+    void d.offsetWidth;
+    d.classList.add('again');
+  } else {
+    d = document.createElement('div');
+    d.className = `splat${big ? ' big' : ''}`;
+    d.innerHTML = splatSvg() + (big ? '<b>퉤!</b><em></em>' : '');
+    el.appendChild(d);
+  }
+  const em = d.querySelector('em');
+  if (em && say) em.textContent = say;
+  const timer = setTimeout(() => {
+    d.classList.add('off');
+    setTimeout(() => d.remove(), 400);
+  }, end - now);
+  splats.set(el, { d, until: end, timer });
 }
+
+/** 화면 고정 말풍선 (맞은 상대의 리액션) */
+function bubble(anchor: Element | null, text: string, color: string): void {
+  if (!anchor) return;
+  const r = anchor.getBoundingClientRect();
+  const b = document.createElement('div');
+  b.className = 'say';
+  b.textContent = text;
+  b.style.setProperty('--own', color);
+  b.style.left = `${r.left + r.width / 2}px`;
+  b.style.top = `${r.top}px`;
+  document.body.appendChild(b);
+  setTimeout(() => b.classList.add('off'), SPIT_MS + 300);
+  setTimeout(() => b.remove(), SPIT_MS + 700);
+}
+
+const randomReaction = () => Math.floor(Math.random() * SPIT_REACTIONS.length);
 
 const centerOf = (el: Element | null) => {
   const r = el?.getBoundingClientRect();
@@ -564,6 +606,7 @@ function startSingle(level: Level, items: boolean): void {
     fx.projectile(centerOf($('#board')), centerOf($('#ai-mini')), SPIT_COLOR, () => {
       sfx.spit();
       spitOn($('#ai-mini'), false);
+      bubble($('#ai-mini'), SPIT_REACTIONS[randomReaction()], '#8a93a6');
       ai.stun(SPIT_MS / 1000);
     });
   });
@@ -574,7 +617,7 @@ function startSingle(level: Level, items: boolean): void {
     fx.projectile(centerOf($('#ai-mini')), centerOf($('#board')), SPIT_COLOR, () => {
       if (done) return;
       sfx.spit();
-      spitOn($('.board-wrap'), true);
+      spitOn($('.board-wrap'), true, SPIT_REACTIONS[randomReaction()]);
     });
   }
 
@@ -846,7 +889,7 @@ function hostAttack(from: number): void {
   const to = pickTarget(from, racers());
   if (to == null) return;
   r.lastAttack.set(from, now);
-  const m: Msg = { t: 'spit', from, to };
+  const m: Msg = { t: 'spit', from, to, say: randomReaction() };
   net?.broadcast(m);
   applySpit(m);
 }
@@ -1022,7 +1065,7 @@ function refreshPlayers(): void {
   $('#end-now')?.classList.toggle('hidden', !(r.host && isRace(r.rule) && r.finishes.size > 0 && !r.result));
   // 순위표를 새로 그리면 미리보기 위 침 자국이 사라지므로, 아직 맞고 있는 사람은 다시 덮는다
   for (const [id, until] of spitted) {
-    if (performance.now() < until) spitOn($(`[data-pv="${id}"]`), false, until - performance.now());
+    if (performance.now() < until) spitOn($(`[data-pv="${id}"]`), false, '', until);
     else spitted.delete(id);
   }
 }
@@ -1036,22 +1079,27 @@ function applyProgress(m: { id: number; filled: number; mistakes: number; cells?
 /** 침 맞는 중인 상대 (미리보기 다시 그릴 때 자국 유지용) */
 const spitted = new Map<number, number>();
 
-/** 침 퉤: 쏜 사람 → 맞은 사람으로 날아가는 연출. 내가 맞으면 내 판이 SPIT_MS 동안 가려진다 */
-function applySpit(m: { from: number; to: number }): void {
+/** 침 퉤: 쏜 사람 → 맞은 사람으로 날아가는 연출. 내가 맞으면 내 판이 가려지고(연속이면 시간이 늘어남), 맞은 사람은 리액션 */
+function applySpit(m: { from: number; to: number; say: number }): void {
   const r = room;
   if (!r?.play || r.phase !== 'play' || r.result) return;
   const spot = (id: number) => centerOf(id === r.myId ? $('#board') : $(`[data-pv="${id}"]`) ?? $(`.stand[data-key="${id}"]`));
   addChat(`💦 ${nameOf(m.from)} → ${nameOf(m.to)} 퉤!`);
   sfx.whoosh();
+  const say = SPIT_REACTIONS[m.say] ?? SPIT_REACTIONS[0];
   fx.projectile(spot(m.from), spot(m.to), SPIT_COLOR, () => {
+    if (!room?.play || room.result) return;
     if (m.to === r.myId) {
       sfx.spit();
-      spitOn($('.board-wrap'), true);
+      spitOn($('.board-wrap'), true, say);
     } else {
       sfx.claimOther();
-      spitted.set(m.to, performance.now() + SPIT_MS);
-      spitOn($(`[data-pv="${m.to}"]`), false);
+      const until = spitUntil(performance.now(), spitted.get(m.to) ?? 0);
+      spitted.set(m.to, until);
+      spitOn($(`[data-pv="${m.to}"]`), false, '', until);
+      bubble($(`.stand[data-key="${m.to}"]`), say, colorOf(m.to));
     }
+    addChat({ id: m.to, name: nameOf(m.to), text: say });
   });
 }
 
