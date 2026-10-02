@@ -12,6 +12,9 @@ export const LEVELS: Record<Level, { label: string; clues: number }> = {
   hard: { label: '고급', clues: 26 },
 };
 
+/** 한 판에 플레이어마다 쓸 수 있는 힌트 수 */
+export const HINTS = 3;
+
 /** 칸마다 같은 행·열·박스에 있는 다른 20칸 */
 export const PEERS: number[][] = Array.from({ length: 81 }, (_, i) => {
   const r = Math.floor(i / 9);
