@@ -48,6 +48,15 @@ function setTheme(id: string): void {
   store.set('theme', id);
 }
 
+// 모바일 브라우저 기본 동작 막기 — 게임 중 길게 누르면 뜨는 메뉴, 핀치 확대(iOS 사파리는 viewport 설정을 무시한다), 글자 선택
+const editable = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+document.addEventListener('contextmenu', (e) => !editable(e.target) && e.preventDefault());
+document.addEventListener('selectstart', (e) => !editable(e.target) && e.preventDefault());
+document.addEventListener('dragstart', (e) => e.preventDefault());
+for (const g of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(g, (e) => e.preventDefault(), { passive: false });
+// 두 손가락 이상이면 확대로 이어지므로 막고, 한 손가락 스크롤(채팅·순위 띠)은 그대로
+document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
+
 // 첫 입력에 오디오를 깨우고, 일반 버튼에 클릭음
 addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 document.addEventListener('click', (e) => {

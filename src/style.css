@@ -844,7 +844,6 @@ kbd {
   font-family: Nunito, sans-serif;
   font-size: 32px;
   letter-spacing: 6px;
-  user-select: text;
 }
 .players {
   list-style: none;
@@ -930,7 +929,6 @@ kbd {
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
-  user-select: text;
 }
 .chat-log .line {
   word-break: break-word;
@@ -1611,4 +1609,28 @@ button,
   from {
     transform: translate(-50%, -40%) scale(0.4);
   }
+}
+
+/* 브라우저 기본 상호작용 끄기: 길게 눌러 복사·선택 메뉴, 두 번 탭/핀치 확대, 끌기, 당겨서 새로고침·바운스 */
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+img,
+svg {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+/* 입력칸만은 글자 선택·편집이 되어야 한다 */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
