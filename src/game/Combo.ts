@@ -1,4 +1,4 @@
-import { rankRace, type Entry } from './Ranking';
+import type { Entry } from './Ranking';
 
 /** 이만큼 연속으로 맞히면 공격 */
 export const ATTACK_COMBO = 3;
@@ -48,8 +48,7 @@ export class ComboMeter {
   }
 }
 
-/** 공격 대상: 아직 푸는 중인 다른 사람 가운데 지금 순위가 가장 높은 사람 (없으면 null) */
-export function pickTarget(attacker: number, es: Entry[]): number | null {
-  const alive = es.filter((e) => e.id !== attacker && e.ms == null && !e.gaveUp);
-  return alive.length ? rankRace(alive)[0].id : null;
+/** 공격 대상: 본인을 뺀, 아직 푸는 중인 모든 사람 (완주·포기한 사람은 빼고) */
+export function spitTargets(attacker: number, es: Entry[]): number[] {
+  return es.filter((e) => e.id !== attacker && e.ms == null && !e.gaveUp).map((e) => e.id);
 }

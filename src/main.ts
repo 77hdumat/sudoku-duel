@@ -1,7 +1,7 @@
 import './style.css';
 import { AI_PROFILES, AiSolver } from './game/Ai';
 import { ClaimJudge, type ClaimEvent } from './game/Claim';
-import { ATTACK_COMBO, ComboMeter, pickTarget, SPIT_MS, SPIT_REACTIONS, spitUntil } from './game/Combo';
+import { ATTACK_COMBO, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUntil } from './game/Combo';
 import { finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './game/Ranking';
 import { fromStr, generate, HINTS, LEVELS, solve, toStr, type Grid, type Level } from './game/Sudoku';
 import { Fx } from './fx/Fx';
@@ -520,7 +520,7 @@ function singleSetup(): void {
   </div>`);
   const paint = () => {
     app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('on', (b.dataset.mode === '1') === items));
-    $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('1등에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : `먼저 끝나도 계속! 기록 = 완주 시간 + 실수당 ${MISTAKE_PENALTY_MS / 1000}초.`;
+    $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('나 빼고 전원에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : `먼저 끝나도 계속! 기록 = 완주 시간 + 실수당 ${MISTAKE_PENALTY_MS / 1000}초.`;
   };
   app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(
     (b) =>
@@ -879,17 +879,17 @@ function hostGiveUp(id: number): void {
   checkRaceEnd();
 }
 
-/** 아이템전 콤보 공격: 방장이 대상(푸는 중인 사람 중 1등)을 골라 모두에게 알린다 */
+/** 아이템전 콤보 공격: 방장이 대상(본인 뺀 푸는 중인 전원)과 각자의 리액션을 정해 모두에게 알린다 */
 function hostAttack(from: number): void {
   const r = room;
   if (!r || r.rule !== 'item' || !racing(from)) return;
   const now = performance.now();
   // 빠른 3콤보는 아무리 빨라도 1초는 걸린다 — 그보다 잦은 공격은 무시
   if (now - (r.lastAttack.get(from) ?? -1e9) < 1000) return;
-  const to = pickTarget(from, racers());
-  if (to == null) return;
+  const to = spitTargets(from, racers());
+  if (!to.length) return;
   r.lastAttack.set(from, now);
-  const m: Msg = { t: 'spit', from, to, say: randomReaction() };
+  const m: Msg = { t: 'spit', from, to, say: to.map(() => randomReaction()) };
   net?.broadcast(m);
   applySpit(m);
 }
@@ -1079,27 +1079,31 @@ function applyProgress(m: { id: number; filled: number; mistakes: number; cells?
 /** 침 맞는 중인 상대 (미리보기 다시 그릴 때 자국 유지용) */
 const spitted = new Map<number, number>();
 
-/** 침 퉤: 쏜 사람 → 맞은 사람으로 날아가는 연출. 내가 맞으면 내 판이 가려지고(연속이면 시간이 늘어남), 맞은 사람은 리액션 */
-function applySpit(m: { from: number; to: number; say: number }): void {
+/**
+ * 침 퉤: 쏜 사람 → 맞은 사람 전원에게 동시에 날아간다.
+ * 내가 맞으면 내 판이 가려지고(연속이면 시간이 늘어남), 맞은 사람마다 리액션 말풍선.
+ */
+function applySpit(m: { from: number; to: number[]; say: number[] }): void {
   const r = room;
-  if (!r?.play || r.phase !== 'play' || r.result) return;
+  if (!r?.play || r.phase !== 'play' || r.result || !Array.isArray(m.to)) return;
   const spot = (id: number) => centerOf(id === r.myId ? $('#board') : $(`[data-pv="${id}"]`) ?? $(`.stand[data-key="${id}"]`));
-  addChat(`💦 ${nameOf(m.from)} → ${nameOf(m.to)} 퉤!`);
+  const says = m.to.map((_, k) => SPIT_REACTIONS[m.say?.[k]] ?? SPIT_REACTIONS[0]);
+  addChat(`💦 ${nameOf(m.from)}의 침 공격! ${m.to.map((id, k) => `${nameOf(id)} '${says[k]}'`).join(' · ')}`);
   sfx.whoosh();
-  const say = SPIT_REACTIONS[m.say] ?? SPIT_REACTIONS[0];
-  fx.projectile(spot(m.from), spot(m.to), SPIT_COLOR, () => {
-    if (!room?.play || room.result) return;
-    if (m.to === r.myId) {
-      sfx.spit();
-      spitOn($('.board-wrap'), true, say);
-    } else {
-      sfx.claimOther();
-      const until = spitUntil(performance.now(), spitted.get(m.to) ?? 0);
-      spitted.set(m.to, until);
-      spitOn($(`[data-pv="${m.to}"]`), false, '', until);
-      bubble($(`.stand[data-key="${m.to}"]`), say, colorOf(m.to));
-    }
-    addChat({ id: m.to, name: nameOf(m.to), text: say });
+  m.to.forEach((to, k) => {
+    fx.projectile(spot(m.from), spot(to), SPIT_COLOR, () => {
+      if (!room?.play || room.result) return;
+      if (to === r.myId) {
+        sfx.spit();
+        spitOn($('.board-wrap'), true, says[k]);
+      } else {
+        if (k === 0 || !m.to.includes(r.myId)) sfx.claimOther();
+        const until = spitUntil(performance.now(), spitted.get(to) ?? 0);
+        spitted.set(to, until);
+        spitOn($(`[data-pv="${to}"]`), false, '', until);
+        bubble($(`.stand[data-key="${to}"]`), says[k], colorOf(to));
+      }
+    });
   });
 }
 
@@ -1189,7 +1193,7 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule): void {
     shared: claim,
     side: claim
       ? `<h3>실시간 점수</h3><div class="standings" id="stand"></div><p class="hint"><span id="left"></span> · 맞히면 +1, 틀리면 -1 · 2초 정지</p>`
-      : `<h3>실시간 순위</h3><div class="standings" id="stand"></div><p class="hint">${meter ? `⚡ 5초 안에 ${ATTACK_COMBO}연속 정답 → 1등에게 침 퉤!` : '완주한 순서대로 시간이 기록돼요. 모두 끝나면 순위 발표!'}</p>${r.host ? '<button class="ghost hidden" id="end-now">지금 종료하고 순위 발표</button>' : ''}`,
+      : `<h3>실시간 순위</h3><div class="standings" id="stand"></div><p class="hint">${meter ? `⚡ 5초 안에 ${ATTACK_COMBO}연속 정답 → 나 빼고 전원에게 침 퉤!` : '완주한 순서대로 시간이 기록돼요. 모두 끝나면 순위 발표!'}</p>${r.host ? '<button class="ghost hidden" id="end-now">지금 종료하고 순위 발표</button>' : ''}`,
     meter,
     onProgress(filled, mistakes) {
       if (claim) return;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ATTACK_COMBO, COMBO_WINDOW_MS, ComboMeter, pickTarget, SPIT_MS, SPIT_REACTIONS, spitUntil } from './Combo';
+import { ATTACK_COMBO, COMBO_WINDOW_MS, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUntil } from './Combo';
 
 describe('ComboMeter', () => {
   it(`빠르게 ${ATTACK_COMBO}연속이면 공격, 그 뒤 다시 처음부터`, () => {
@@ -49,8 +49,8 @@ describe('침', () => {
   });
 });
 
-describe('pickTarget', () => {
-  it('푸는 중인 사람 가운데 1등을 노린다', () => {
+describe('spitTargets', () => {
+  it('본인을 뺀, 아직 푸는 중인 모두를 노린다', () => {
     const es = [
       { id: 0, filled: 10, ms: null },
       { id: 1, filled: 30, ms: null },
@@ -58,11 +58,11 @@ describe('pickTarget', () => {
       { id: 3, filled: 35, ms: null, gaveUp: true },
       { id: 4, filled: 20, ms: null },
     ];
-    expect(pickTarget(0, es)).toBe(1);
-    expect(pickTarget(1, es)).toBe(4);
+    expect(spitTargets(0, es)).toEqual([1, 4]);
+    expect(spitTargets(1, es)).toEqual([0, 4]);
   });
 
-  it('노릴 사람이 없으면 null', () => {
-    expect(pickTarget(0, [{ id: 0, filled: 1, ms: null }, { id: 1, filled: 41, ms: 1 }])).toBeNull();
+  it('노릴 사람이 없으면 빈 목록', () => {
+    expect(spitTargets(0, [{ id: 0, filled: 1, ms: null }, { id: 1, filled: 41, ms: 1 }])).toEqual([]);
   });
 });
