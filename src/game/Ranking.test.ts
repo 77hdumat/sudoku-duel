@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { places, rankRace, rankScore, type Entry } from './Ranking';
+import { finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './Ranking';
 
 describe('Ranking', () => {
   it('레이스: 완주자는 시간순, 미완주는 뒤에서 진행 많은 순', () => {
@@ -51,6 +51,14 @@ describe('Ranking', () => {
       { id: 2, filled: 5, ms: null, score: 5, mistakes: 0 },
     ]);
     expect(claim.map((e) => e.id)).toEqual([2, 1]);
+  });
+
+  it('실수 하나당 벌점 시간이 더해져 순위가 바뀐다', () => {
+    const fast = { id: 1, filled: 41, ms: 100_000, mistakes: 2 };
+    const clean = { id: 2, filled: 41, ms: 115_000, mistakes: 0 };
+    expect(finalMs(fast)).toBe(100_000 + 2 * MISTAKE_PENALTY_MS);
+    expect(rankRace<Entry>([fast, clean]).map((e) => e.id)).toEqual([2, 1]);
+    expect(finalMs({ id: 3, filled: 9, ms: null, mistakes: 5 })).toBeNull();
   });
 
   it('완주자와 미완주자는 같은 등수가 되지 않는다', () => {

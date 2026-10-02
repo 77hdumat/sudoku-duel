@@ -11,10 +11,16 @@ export interface Entry {
 
 const fewer = (a: Entry, b: Entry) => (a.mistakes ?? 0) - (b.mistakes ?? 0);
 
-/** 레이스: 완주한 사람은 시간순, 못 끝낸 사람은 그 뒤에 채운 칸 많은 순. 같으면 실수 적은 순 */
+/** 레이스 계열: 실수 하나에 더해지는 시간 */
+export const MISTAKE_PENALTY_MS = 10_000;
+
+/** 최종 기록 = 완주 시간 + 실수 벌점 (못 끝냈으면 null) */
+export const finalMs = (e: Entry): number | null => (e.ms == null ? null : e.ms + (e.mistakes ?? 0) * MISTAKE_PENALTY_MS);
+
+/** 레이스: 완주한 사람은 최종 기록(시간 + 실수 벌점)순, 못 끝낸 사람은 그 뒤에 채운 칸 많은 순. 같으면 실수 적은 순 */
 export function rankRace<T extends Entry>(es: T[]): T[] {
   return [...es].sort((a, b) => {
-    if (a.ms != null && b.ms != null) return a.ms - b.ms || fewer(a, b);
+    if (a.ms != null && b.ms != null) return finalMs(a)! - finalMs(b)! || fewer(a, b);
     if (a.ms != null) return -1;
     if (b.ms != null) return 1;
     return b.filled - a.filled || fewer(a, b);
@@ -30,7 +36,7 @@ export function rankScore<T extends Entry>(es: T[]): T[] {
 export function places(sorted: Entry[], claim: boolean): number[] {
   const same = (a: Entry, b: Entry) =>
     (a.mistakes ?? 0) === (b.mistakes ?? 0) &&
-    (claim ? (a.score ?? 0) === (b.score ?? 0) && a.filled === b.filled : a.ms != null || b.ms != null ? a.ms === b.ms : a.filled === b.filled);
+    (claim ? (a.score ?? 0) === (b.score ?? 0) && a.filled === b.filled : a.ms != null || b.ms != null ? finalMs(a) === finalMs(b) : a.filled === b.filled);
   return sorted.map((e, i) => {
     let k = i;
     while (k > 0 && same(sorted[k - 1], e)) k--;

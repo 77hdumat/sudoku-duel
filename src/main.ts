@@ -2,7 +2,7 @@ import './style.css';
 import { AI_PROFILES, AiSolver } from './game/Ai';
 import { ClaimJudge, type ClaimEvent } from './game/Claim';
 import { ATTACK_COMBO, ComboMeter, pickTarget, SPIT_MS } from './game/Combo';
-import { places, rankRace, rankScore, type Entry } from './game/Ranking';
+import { finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './game/Ranking';
 import { fromStr, generate, HINTS, LEVELS, solve, toStr, type Grid, type Level } from './game/Sudoku';
 import { Fx } from './fx/Fx';
 import { sfx } from './fx/Sfx';
@@ -391,6 +391,9 @@ interface Racer extends Entry {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+/** 완주 기록 옆 벌점 설명: " · 3:12 + 실수 2 (+20초)" */
+const penaltyNote = (e: Entry) => (e.ms != null && e.mistakes ? ` · ${fmt(e.ms)} + 실수 ${e.mistakes} (+${(e.mistakes * MISTAKE_PENALTY_MS) / 1000}초)` : '');
+
 /** 규칙대로 정렬해 그린다. 순위가 바뀐 줄은 이전 자리에서 미끄러져 온다 */
 function renderStandings(el: HTMLElement | null, racers: Racer[], claim: boolean, total: number): Racer[] {
   const sorted = claim ? rankScore(racers) : rankRace(racers);
@@ -399,17 +402,15 @@ function renderStandings(el: HTMLElement | null, racers: Racer[], claim: boolean
   const before = new Map([...el.children].map((c) => [(c as HTMLElement).dataset.key, c.getBoundingClientRect().top]));
   el.innerHTML = sorted
     .map((e, i) => {
-      const value = claim ? `${e.score ?? 0}` : e.ms != null ? fmt(e.ms) : `${e.filled}/${total}`;
+      const value = claim ? `${e.score ?? 0}` : e.ms != null ? fmt(finalMs(e)!) : `${e.filled}/${total}`;
       const sub = claim
         ? `${e.filled}칸`
         : e.ms != null
-          ? e.projected
-            ? '끝까지 풀면 (예상)'
-            : '🏁 완주'
+          ? `${e.projected ? '끝까지 풀면 (예상)' : '🏁 완주'}${penaltyNote(e)}`
           : e.gaveUp
             ? '포기'
             : `${Math.round((e.filled / total) * 100)}%`;
-      const miss = e.mistakes ? ` · 실수 ${e.mistakes}` : '';
+      const miss = e.mistakes && e.ms == null ? ` · 실수 ${e.mistakes}` : '';
       const pv = e.cells && !e.me ? `<div class="pv" data-pv="${e.id}">${[...e.cells].map((c) => `<i class="${c === 'g' ? 'g' : c === '1' ? 'f' : ''}"></i>`).join('')}</div>` : '';
       const pct = claim ? 0 : e.ms != null ? 100 : (e.filled / total) * 100;
       return `<div class="stand${e.me ? ' me' : ''}${e.ms != null ? ' done' : ''}${e.gaveUp ? ' out' : ''}" data-key="${e.id}" style="--own:${e.color}">
@@ -438,7 +439,7 @@ function resultDialog(h: Play, racers: Racer[], claim: boolean, total: number, b
   const d = h.overlay(`
     <img class="result-img${myPlace === 1 ? '' : ' dim'}" src="assets/trophy.svg" alt="" />
     <h2>${title}</h2>
-    <p class="hint">${claim ? '점수 순위' : '완주 시간 순위'}</p>
+    <p class="hint">${claim ? '점수 순위 (맞힌 칸 − 실수)' : `기록 순위 (완주 시간 + 실수당 ${MISTAKE_PENALTY_MS / 1000}초)`}</p>
     <div class="standings final" id="final"></div>
     <div class="row">${buttons}</div>`);
   renderStandings(d.querySelector('#final'), racers, claim, total);
@@ -477,7 +478,7 @@ function singleSetup(): void {
   </div>`);
   const paint = () => {
     app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('on', (b.dataset.mode === '1') === items));
-    $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('1등에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : '먼저 끝나도 계속! 완주 시간 순으로 순위가 정해져요.';
+    $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('1등에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : `먼저 끝나도 계속! 기록 = 완주 시간 + 실수당 ${MISTAKE_PENALTY_MS / 1000}초.`;
   };
   app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(
     (b) =>
@@ -515,7 +516,7 @@ function startSingle(level: Level, items: boolean): void {
       <div class="standings" id="stand"></div>
       <p class="hint mini-title">${prof.name} 의 판</p>
       <div class="mini" id="ai-mini">${puzzle.map((v) => `<i class="${v ? 'g' : ''}"></i>`).join('')}</div>
-      <p class="hint">먼저 끝나도 계속! 완주 시간 순으로 순위가 정해져요.</p>`,
+      <p class="hint">먼저 끝나도 계속! 기록 = 완주 시간 + 실수당 ${MISTAKE_PENALTY_MS / 1000}초.</p>`,
     onProgress(f, m) {
       meR.filled = f;
       meR.mistakes = m;
@@ -546,7 +547,7 @@ function startSingle(level: Level, items: boolean): void {
       if (ai.done) {
         aiR.ms = h.elapsed();
         sfx.claimOther();
-        if (meR.ms == null) h.banner(`🏁 ${prof.name} 가 ${fmt(aiR.ms)} 에 먼저 완주! 끝까지 풀어 기록을 남겨요`);
+        if (meR.ms == null) h.banner(`🏁 ${prof.name} 먼저 완주! 기록 ${fmt(finalMs(aiR)!)} — 끝까지 풀어 기록을 남겨요`);
       }
       refresh();
     },
@@ -1058,12 +1059,14 @@ function applyFinished(m: { id: number; ms: number }): void {
   const r = room;
   if (!r || r.phase !== 'play') return;
   r.finishes.set(m.id, m.ms);
-  const place = r.finishes.size;
-  addChat(`🏁 ${nameOf(m.id)} 님 ${place}등 완주! (${fmt(m.ms)})`);
+  // 실수 벌점이 붙어 완주 순서와 순위가 다를 수 있으니, 기록(시간+벌점)으로 말한다
+  const e: Entry = { id: m.id, filled: 0, ms: m.ms, mistakes: r.progress.get(m.id)?.mistakes ?? 0 };
+  const rec = `${fmt(finalMs(e)!)}${e.mistakes ? ` (실수 +${(e.mistakes! * MISTAKE_PENALTY_MS) / 1000}초)` : ''}`;
+  addChat(`🏁 ${nameOf(m.id)} 님 완주! 기록 ${rec}`);
   if (m.id === r.myId) {
-    if (place === 1) fx.confetti(70);
+    if (r.finishes.size === 1) fx.confetti(70);
     sfx.line();
-    r.play?.banner(`🏁 ${place}등으로 완주! (${fmt(m.ms)}) 다른 사람을 기다리는 중…`);
+    r.play?.banner(`🏁 완주! 기록 ${rec} — 다른 사람을 기다리는 중…`);
   } else sfx.claimOther();
   refreshPlayers();
 }
