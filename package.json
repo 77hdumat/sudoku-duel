@@ -1,0 +1,31 @@
+{
+  "name": "sudoku-duel",
+  "private": true,
+  "version": "0.1.0",
+  "description": "스도쿠 대결 — AI 대전과 P2P 멀티플레이 스도쿠",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "app": "npm run build && electron .",
+    "app:dev": "VITE_DEV_URL=http://localhost:5190 electron .",
+    "dist": "npm run build && electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.sudokuduel.app",
+    "productName": "Sudoku Duel",
+    "files": ["dist/**", "electron/**"],
+    "directories": { "output": "release" },
+    "mac": { "target": "dmg", "category": "public.app-category.puzzle-games" }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "peerjs": "^1.5.5",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
+  }
+}
