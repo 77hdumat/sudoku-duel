@@ -1375,9 +1375,10 @@ button,
     scrollbar-width: none;
   }
   /* 폰의 순위 띠: 메달·아바타·미리보기·기록만 (이름은 아바타 글자로) */
+  /* 5명이면 폰 폭에 다 안 들어가므로 가로로 밀어서 본다 */
   .side .stand {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 1 0 auto;
+    min-width: 104px;
     padding: 6px 8px 6px 4px;
     gap: 6px;
   }

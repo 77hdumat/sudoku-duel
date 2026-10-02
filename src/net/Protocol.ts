@@ -20,7 +20,7 @@ export const RULES: Record<Rule, { label: string; desc: string }> = {
   item: { label: '아이템전', desc: '레이스형 + 5초 안에 3연속으로 맞히면 1등에게 침 퉤! 맞은 사람은 1.5초 동안 판이 안 보여요(또 맞으면 늘어나요). 실수당 +10초.' },
 };
 
-export const MAX_PLAYERS = 3;
+export const MAX_PLAYERS = 5;
 export const FREEZE_MS = 2000;
 
 /**
