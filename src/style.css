@@ -17,6 +17,7 @@
   --same: #f3d6b9;
   --shadow: 0 10px 30px rgba(90, 70, 40, 0.14);
   --bg-hi: #fdf6ea;
+  --edge: #d9c7a6;
 }
 [data-theme='night'] {
   --bg: #12161f;
@@ -36,6 +37,7 @@
   --same: #2d3a5c;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   --bg-hi: #222a3d;
+  --edge: #0a0d14;
 }
 [data-theme='matcha'] {
   --bg: #e7efe0;
@@ -55,6 +57,7 @@
   --same: #d3e7c1;
   --shadow: 0 10px 30px rgba(40, 70, 45, 0.14);
   --bg-hi: #f6fbf0;
+  --edge: #b3c9a2;
 }
 
 * {
@@ -1042,4 +1045,97 @@ kbd {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ───────── 블록 톤앤매너 ─────────
+ * 버튼은 three.js 블록(Blocks.ts)이 대신 그린다. DOM 버튼은 투명하게 남아 클릭·키보드·포커스를 받는다.
+ * 패널·보드·입력칸·칩은 CSS 로 같은 '아랫면이 보이는 장난감 블록' 모양을 맞춘다.
+ */
+button.blk {
+  opacity: 0 !important;
+  transform: none !important;
+  transition: none !important;
+}
+.menu-card,
+.side,
+.lobby-main,
+.chat,
+.dialog,
+.op-card.ai img {
+  border: 2px solid var(--line);
+  box-shadow:
+    0 8px 0 var(--edge),
+    var(--shadow);
+}
+.menu-card,
+.side,
+.lobby-main,
+.chat,
+.dialog {
+  border-radius: 26px;
+}
+.board {
+  box-shadow:
+    0 10px 0 color-mix(in srgb, var(--thick) 70%, #000),
+    var(--shadow);
+}
+input {
+  border-width: 2px;
+  box-shadow: inset 0 3px 0 color-mix(in srgb, var(--soft) 80%, transparent);
+}
+.chip {
+  box-shadow: 0 3px 0 var(--edge);
+}
+.avatar {
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.18),
+    0 2px 0 rgba(0, 0, 0, 0.12);
+}
+.players li,
+.racer,
+.ranking li,
+.code-box,
+.mini {
+  box-shadow: 0 4px 0 var(--edge);
+}
+.op-card.ai img {
+  border-radius: 16px;
+  background: var(--panel);
+  padding: 4px;
+}
+.bar {
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.08);
+}
+.bar i {
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.15);
+}
+
+/* 블록 색 (Blocks.ts 가 --block 을 읽는다) */
+#single {
+  --block: #b9dafc;
+}
+#host {
+  --block: #ffc9b8;
+}
+.bot.easy {
+  --block: #c5ebc9;
+}
+.bot.medium {
+  --block: #c3dcf7;
+}
+.bot.hard {
+  --block: #f9c2c8;
+}
+[data-theme='night'] #single,
+[data-theme='night'] .bot.medium {
+  --block: #34507a;
+}
+[data-theme='night'] #host {
+  --block: #6b3d4a;
+}
+[data-theme='night'] .bot.easy {
+  --block: #2f5a3e;
+}
+[data-theme='night'] .bot.hard {
+  --block: #6b3440;
 }

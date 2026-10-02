@@ -33,6 +33,7 @@ npm test           # 생성기·솔버·AI 테스트
 
 ## 연출
 
+- 모든 버튼은 three.js 장난감 블록 (`src/fx/Blocks.ts`): 원래 버튼은 투명하게 남아 클릭·키보드를 받고, 그 자리에 블록을 그려 글자·아이콘을 윗면에 옮긴다. 올리면 떠오르며 기울고, 누르면 눌리고, 클릭하면 통 튄다. 블록 색은 CSS 변수 `--block`. 패널·보드·입력칸은 CSS 로 같은 블록 모양
 - 배경: three.js 로 떠다니는 숫자 블록·비눗방울·별·하트 100여 개 (테마별 색, 마우스 시차). 마우스가 스치면 그 근처 것만 톡 밀려났다가 스프링으로 돌아온다 (`Fx.ts` 의 `SPRING`·`DAMP`·`PUSH_RADIUS`)
 - 맞히면 3D 별·하트 파티클 + 고리 + "+1"/콤보, 행·열·박스 완성 시 무지개 물결, 승리 시 색종이
 - 선택 칸: 네 모서리 꺾쇠가 숨 쉬듯 움직이며 칸 사이를 미끄러진다 (메모 모드 ✎ 점선, 정지 중 ❄)
@@ -58,6 +59,7 @@ src/game/Sudoku.ts  솔버(MRV 백트래킹) · 대칭 유일해 생성기
 src/game/Ai.ts      AI 상대
 src/game/Claim.ts   점령형 심판 (방장)
 src/fx/Fx.ts        three.js 배경·파티클 이펙트
+src/fx/Blocks.ts    버튼 → 3D 블록
 src/fx/Sfx.ts       합성 효과음
 src/ui/Board.ts     보드·숫자패드·키보드 입력
 src/net/Net.ts      PeerJS 방코드·하트비트·TURN

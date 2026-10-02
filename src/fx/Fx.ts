@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { UiBlocks } from './Blocks';
 
 /**
  * three.js 두 겹:
@@ -163,6 +164,7 @@ export class Fx {
   private bgCam = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
   private fxCam = new THREE.OrthographicCamera(0, 1, 0, -1, -2000, 2000);
   private pools: ParticlePool[] = [];
+  private blocks: UiBlocks | null = null;
   private floaters: Floater[] = [];
   private tinted: THREE.MeshStandardMaterial[] = [];
   private tweens: Tween[] = [];
@@ -199,6 +201,7 @@ export class Fx {
     }
 
     this.buildBackground();
+    this.blocks = new UiBlocks(this.fxScene);
     this.resize();
     addEventListener('resize', () => this.resize());
     addEventListener('pointermove', (e) => {
@@ -356,6 +359,7 @@ export class Fx {
     }
     this.bgR.render(this.bgScene, this.bgCam);
 
+    this.blocks?.update(dt);
     for (const p of this.pools) p.update(dt);
     this.tweens = this.tweens.filter((tw) => {
       tw.t += dt;
