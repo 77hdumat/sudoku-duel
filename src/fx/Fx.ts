@@ -133,7 +133,19 @@ interface Floater {
   phase: number;
   spin: THREE.Vector3;
   rise: number;
+  /** 마우스에 밀려난 정도 — 스프링으로 제자리에 돌아온다 */
+  off: THREE.Vector3;
+  vel: THREE.Vector3;
+  /** 밀릴 때 더해지는 회전 (점점 줄어든다) */
+  kick: THREE.Vector3;
 }
+
+/** 밀림 스프링: 세기·감쇠 (클수록 빨리 돌아온다) */
+const SPRING = 7;
+const DAMP = 3.2;
+/** 마우스가 이 픽셀 반경 안을 지나가면 밀어낸다 */
+const PUSH_RADIUS = 110;
+const _sp = new THREE.Vector3();
 
 interface Tween {
   t: number;
@@ -156,6 +168,9 @@ export class Fx {
   private tweens: Tween[] = [];
   private palette = PALETTES.paper;
   private mouse = new THREE.Vector2();
+  /** 화면 픽셀 기준 마우스 위치와 이번 프레임 이동량 */
+  private px = new THREE.Vector2(-9999, -9999);
+  private pxPrev = new THREE.Vector2(-9999, -9999);
   private last = performance.now();
 
   constructor() {
@@ -186,7 +201,10 @@ export class Fx {
     this.buildBackground();
     this.resize();
     addEventListener('resize', () => this.resize());
-    addEventListener('pointermove', (e) => this.mouse.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1));
+    addEventListener('pointermove', (e) => {
+      this.mouse.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
+      this.px.set(e.clientX, e.clientY);
+    });
     requestAnimationFrame(this.loop);
   }
 
@@ -203,8 +221,19 @@ export class Fx {
     const box = new RoundedBoxGeometry(1.6, 1.6, 1.6, 4, 0.38);
     const face = new THREE.PlaneGeometry(1.25, 1.25);
     const rand = (a: number, b: number) => a + Math.random() * (b - a);
-    const edgeX = () => (Math.random() < 0.5 ? -1 : 1) * rand(10, 18);
-    const n = reduceMotion ? 8 : 16;
+    /**
+     * 화면 안 무작위 위치. 깊이에 따라 보이는 폭이 달라서 z 부터 정하고 그 깊이의 화면 폭 안에서 고른다.
+     * 가까운(큰) 것은 UI 가 있는 가운데를 피해 양옆으로, 먼(작은) 것은 어디든.
+     */
+    const spot = (zMin: number, zMax: number): [number, number, number] => {
+      const z = rand(zMin, zMax);
+      const halfH = (20 - z) * Math.tan(THREE.MathUtils.degToRad(25));
+      const halfW = halfH * 1.75;
+      let x = rand(-halfW, halfW) * 0.95;
+      if (z > -14 && Math.abs(x) < halfW * 0.4) x = Math.sign(x || 1) * rand(halfW * 0.4, halfW * 0.95);
+      return [x, rand(-halfH, halfH) * 0.92, z];
+    };
+    const n = reduceMotion ? 12 : 46;
     for (let k = 0; k < n; k++) {
       const mat = new THREE.MeshStandardMaterial({ roughness: 0.5 });
       this.tinted.push(mat);
@@ -212,20 +241,23 @@ export class Fx {
       const digit = new THREE.Mesh(face, new THREE.MeshBasicMaterial({ map: textTexture(String((k % 9) + 1), '#ffffff', 128, 1, false), transparent: true }));
       digit.position.z = 0.81;
       mesh.add(digit);
-      // 가운데(UI 자리)는 비워 두고 양옆 가장자리에만
-      this.addFloater(mesh, edgeX(), rand(-9, 9), rand(-16, -6), rand(0.6, 1.2), false);
+      const [x, y, z] = spot(-30, -4);
+      this.addFloater(mesh, x, y, z, rand(0.5, 1.25), false);
     }
     const bubble = new THREE.SphereGeometry(0.5, 20, 14);
-    for (let k = 0; k < (reduceMotion ? 6 : 16); k++) {
+    for (let k = 0; k < (reduceMotion ? 8 : 30); k++) {
       const mat = new THREE.MeshStandardMaterial({ roughness: 0.15, transparent: true, opacity: 0.45 });
       this.tinted.push(mat);
-      this.addFloater(new THREE.Mesh(bubble, mat), rand(-16, 16), rand(-10, 10), rand(-12, -2), rand(0.4, 1.1), true);
+      const [x, y, z] = spot(-24, -2);
+      this.addFloater(new THREE.Mesh(bubble, mat), x, y, z, rand(0.4, 1.1), true);
     }
     const star = extrude(starShape());
-    for (let k = 0; k < (reduceMotion ? 4 : 10); k++) {
+    const heart = extrude(heartShape());
+    for (let k = 0; k < (reduceMotion ? 6 : 26); k++) {
       const mat = new THREE.MeshStandardMaterial({ roughness: 0.3 });
       this.tinted.push(mat);
-      this.addFloater(new THREE.Mesh(star, mat), edgeX(), rand(-10, 10), rand(-14, -4), rand(0.35, 0.6), false);
+      const [x, y, z] = spot(-26, -3);
+      this.addFloater(new THREE.Mesh(k % 3 ? star : heart, mat), x, y, z, rand(0.35, 0.65), false);
     }
     this.recolor();
   }
@@ -242,6 +274,9 @@ export class Fx {
       phase: Math.random() * 10,
       spin: new THREE.Vector3((Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.6, 0),
       rise: rise ? 0.4 + Math.random() * 0.6 : 0,
+      off: new THREE.Vector3(),
+      vel: new THREE.Vector3(),
+      kick: new THREE.Vector3(),
     });
   }
 
@@ -276,14 +311,44 @@ export class Fx {
     const t = now / 1000;
 
     if (!reduceMotion) {
+      const w = innerWidth;
+      const h = innerHeight;
+      const moved = this.pxPrev.x > -9000 ? Math.min(80, this.px.distanceTo(this.pxPrev)) : 0;
+      this.pxPrev.copy(this.px);
       for (const f of this.floaters) {
         if (f.rise) {
           f.base.y += f.rise * dt;
-          if (f.base.y > 12) f.base.y = -12;
+          const top = (20 - f.base.z) * 0.47;
+          if (f.base.y > top) f.base.y = -top;
         }
-        f.obj.position.set(f.base.x + Math.sin(t * f.speed * 0.7 + f.phase) * 0.4, f.base.y + Math.sin(t * f.speed + f.phase) * 0.5, f.base.z);
-        f.obj.rotation.x += f.spin.x * dt;
-        f.obj.rotation.y += f.spin.y * dt;
+        const x = f.base.x + Math.sin(t * f.speed * 0.7 + f.phase) * 0.4;
+        const y = f.base.y + Math.sin(t * f.speed + f.phase) * 0.5;
+
+        // 마우스가 스치면 그 블록만 반대쪽으로 톡 — 빨리 휘두를수록 세게, 가까운 큰 블록일수록 반경도 크게
+        if (moved > 0.5) {
+          _sp.set(x + f.off.x, y + f.off.y, f.base.z + f.off.z).project(this.bgCam);
+          const sx = ((_sp.x + 1) / 2) * w;
+          const sy = ((1 - _sp.y) / 2) * h;
+          const radius = PUSH_RADIUS * f.obj.scale.x * Math.min(1.6, 22 / (20 - f.base.z));
+          const d = Math.hypot(sx - this.px.x, sy - this.px.y);
+          if (d < radius) {
+            const k = (1 - d / radius) * moved * 0.09;
+            const dx = d ? (sx - this.px.x) / d : 1;
+            const dy = d ? (sy - this.px.y) / d : 0;
+            f.vel.x += dx * k;
+            f.vel.y -= dy * k;
+            f.vel.z -= k * 0.5;
+            f.kick.x += (Math.random() - 0.5) * k * 1.5;
+            f.kick.y += (Math.random() - 0.5) * k * 1.5;
+          }
+        }
+        f.vel.addScaledVector(f.off, -SPRING * dt).multiplyScalar(Math.max(0, 1 - DAMP * dt));
+        f.off.addScaledVector(f.vel, dt);
+        f.kick.multiplyScalar(Math.max(0, 1 - 1.8 * dt));
+
+        f.obj.position.set(x + f.off.x, y + f.off.y, f.base.z + f.off.z);
+        f.obj.rotation.x += (f.spin.x + f.kick.x) * dt;
+        f.obj.rotation.y += (f.spin.y + f.kick.y) * dt;
       }
       this.bgCam.position.x += (this.mouse.x * 1.2 - this.bgCam.position.x) * 0.03;
       this.bgCam.position.y += (-this.mouse.y * 0.8 - this.bgCam.position.y) * 0.03;

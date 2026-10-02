@@ -35,6 +35,8 @@ const store = {
 };
 
 const fx = new Fx();
+// 개발 중 콘솔·자동 테스트에서 이펙트 상태를 들여다보기 위한 것 (배포 빌드에는 빠진다)
+if (import.meta.env.DEV) Object.assign(window, { __fx: fx });
 let myName = store.get('name', '플레이어');
 setTheme(store.get('theme', 'paper'));
 
