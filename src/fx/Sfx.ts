@@ -47,6 +47,34 @@ function tone(freq: number, at: number, dur: number, wave: Wave = 'triangle', vo
   o.stop(t0 + dur + 0.02);
 }
 
+let noiseBuf: AudioBuffer | null = null;
+
+/** 짧은 잡음 (침 뱉는 소리 '퉤') — 대역통과로 음색을 잡는다 */
+function noise(at: number, dur: number, freq: number, q: number, vol: number): void {
+  const a = ac();
+  if (!a || !master || muted) return;
+  if (!noiseBuf) {
+    noiseBuf = a.createBuffer(1, a.sampleRate * 0.5, a.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t0 = a.currentTime + at;
+  const src = a.createBufferSource();
+  src.buffer = noiseBuf;
+  const f = a.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.setValueAtTime(freq, t0);
+  f.frequency.exponentialRampToValueAtTime(freq * 0.4, t0 + dur);
+  f.Q.value = q;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  src.connect(f).connect(g).connect(master);
+  src.start(t0);
+  src.stop(t0 + dur + 0.02);
+}
+
 /** 반음 n 개 위 */
 const st = (base: number, n: number) => base * 2 ** (n / 12);
 const C5 = 523.25;
@@ -87,6 +115,21 @@ export const sfx = {
   /** 다른 사람이 칸을 가져감 (점령형) */
   claimOther(): void {
     tone(st(C5, -5), 0, 0.1, 'sine', 0.18);
+  },
+  /** 콤보 한 칸 오를 때 */
+  comboUp(n: number): void {
+    tone(st(C5, 12 + n * 4), 0, 0.08, 'square', 0.12);
+  },
+  /** 공격 발사 — 휘익 */
+  whoosh(): void {
+    noise(0, 0.35, 2400, 1.2, 0.35);
+    tone(st(C5, 7), 0, 0.3, 'sine', 0.15, st(C5, 19));
+  },
+  /** 침 맞음 — 퉤! */
+  spit(): void {
+    noise(0, 0.12, 1800, 2.5, 0.9);
+    noise(0.05, 0.25, 700, 1.5, 0.6);
+    tone(180, 0.02, 0.18, 'sine', 0.35, 90);
   },
   wrong(): void {
     tone(220, 0, 0.18, 'square', 0.18, 140);

@@ -5,6 +5,9 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
  * 화면의 모든 버튼을 장난감 블록으로: DOM 버튼은 투명하게 남겨 클릭·키보드·포커스를 그대로 받고,
  * 그 자리에 같은 크기의 3D 블록을 그린 뒤 버튼 안 글자·아이콘·배지를 윗면 텍스처로 옮겨 그린다.
  * 이펙트 레이어(직교 카메라, 화면 픽셀 좌표) 위에 올라가므로 다른 요소에 가려진 버튼은 숨긴다.
+ *
+ * 선명함: 가만히 있을 때는 기울이지 않고 윗면을 화면 픽셀에 1:1 로 맞춘다(글자가 번지지 않게).
+ * 블록 두께는 아래로 삐져나온 어두운 몸통(같은 색을 어둡게, 조명 없이)으로 보여 테두리가 뿌옇지 않다.
  */
 
 const SELECTOR = '#app button, #mute';
@@ -12,7 +15,7 @@ const SELECTOR = '#app button, #mute';
 interface Blk {
   el: HTMLButtonElement;
   group: THREE.Group;
-  mat: THREE.MeshStandardMaterial;
+  mat: THREE.MeshBasicMaterial;
   faceMat: THREE.MeshBasicMaterial;
   body: THREE.Mesh;
   face: THREE.Mesh;
@@ -21,6 +24,8 @@ interface Blk {
   w: number;
   h: number;
   depth: number;
+  /** 아래로 보이는 몸통 두께(px) */
+  edge: number;
   key: string;
   hover: number;
   press: number;
@@ -43,6 +48,16 @@ function cssColor(css: string): { hex: string; alpha: number } {
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+/** 글자용 텍스처: 밉맵·축소 필터를 끄고 그대로 찍는다 (뿌옇지 않게) */
+function crispTexture(c: HTMLCanvasElement): THREE.CanvasTexture {
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.generateMipmaps = false;
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  return t;
+}
 
 export class UiBlocks {
   private items = new Map<HTMLButtonElement, Blk>();
@@ -69,16 +84,15 @@ export class UiBlocks {
 
   private add(el: HTMLButtonElement): Blk {
     const canvas = document.createElement('canvas');
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0 });
+    const tex = crispTexture(canvas);
+    const mat = new THREE.MeshBasicMaterial();
     const faceMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
     const group = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BufferGeometry(), mat);
     const face = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), faceMat);
     group.add(body, face);
     this.scene.add(group);
-    const b: Blk = { el, group, mat, faceMat, body, face, canvas, tex, w: 0, h: 0, depth: 0, key: '', hover: 0, press: 0, pop: -0.35, popV: 0, over: false, down: false };
+    const b: Blk = { el, group, mat, faceMat, body, face, canvas, tex, w: 0, h: 0, depth: 0, edge: 0, key: '', hover: 0, press: 0, pop: -0.35, popV: 0, over: false, down: false };
     el.classList.add('blk');
     el.addEventListener('pointerenter', () => (b.over = true));
     el.addEventListener('pointerleave', () => (b.over = b.down = false));
@@ -114,16 +128,17 @@ export class UiBlocks {
       b.w = r.width;
       b.h = r.height;
       b.depth = clamp(r.height * 0.42, 10, 28);
+      b.edge = Math.round(clamp(r.height * 0.1, 4, 7));
       const radius = Math.min(16, r.height * 0.3, r.width * 0.3);
       b.body.geometry.dispose();
       b.body.geometry = new RoundedBoxGeometry(r.width, r.height, b.depth, 4, radius);
-      b.face.scale.set(r.width, r.height, 1);
       b.face.position.z = b.depth / 2 + 0.6;
       b.key = '';
     }
 
     const theme = document.documentElement.dataset.theme ?? '';
-    const key = `${theme}|${el.className}|${el.disabled}|${el.textContent}|${el.querySelector('img')?.getBoundingClientRect().top ?? ''}`;
+    const focus = el.matches(':focus-visible');
+    const key = `${theme}|${el.className}|${el.disabled}|${focus}|${el.textContent}|${el.querySelector('img')?.getBoundingClientRect().top ?? ''}`;
     if (key !== b.key || this.repaintAll) {
       b.key = key;
       this.paint(b, r);
@@ -139,16 +154,23 @@ export class UiBlocks {
 
     const mx = clamp((this.mouse.x - cx) / r.width, -0.6, 0.6);
     const my = clamp((this.mouse.y - cy) / r.height, -0.6, 0.6);
-    b.group.position.set(cx, -cy + b.hover * 3 - b.press * 2, b.hover * 40);
-    b.group.rotation.set(0.34 - b.press * 0.22 - (on ? 0.14 : 0) + my * 0.3 * b.hover, mx * 0.35 * b.hover, 0);
-    const s = 1 + b.hover * 0.04 - b.press * 0.04 + b.pop;
-    b.group.scale.set(s, s, Math.max(0.2, s * (1 - b.press * 0.4 - (on ? 0.35 : 0))));
+    // 윗면은 버튼 자리 그대로(기기 픽셀에 맞춰), 눌리면 몸통 쪽으로 내려간다
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const snap = (v: number) => Math.round(v * dpr) / dpr;
+    const sink = Math.max(b.press, on ? 0.6 : 0) * b.edge;
+    const lift = b.hover * 2;
+    b.group.position.set(snap(r.left) + b.w / 2, -(snap(r.top) + b.h / 2) - sink + lift, b.hover * 40);
+    b.body.position.y = -(b.edge - sink);
+    b.face.scale.set(b.w, b.h, 1);
+    // 기울기는 마우스를 올렸을 때만 살짝
+    b.group.rotation.set(my * 0.18 * b.hover, mx * 0.22 * b.hover, 0);
+    const s = 1 + b.hover * 0.03 + b.pop;
+    b.group.scale.set(s, s, 1);
 
     const dim = el.disabled ? 0.45 : 1;
     b.mat.transparent = b.faceMat.transparent = true;
     b.mat.opacity = dim;
     b.faceMat.opacity = dim;
-    b.mat.emissive.setHex(el.matches(':focus-visible') ? 0x553300 : 0x000000);
   }
 
   /** 버튼 속 이미지·배경 있는 요소·글자를 화면 배치 그대로 캔버스에 */
@@ -158,8 +180,16 @@ export class UiBlocks {
     // 블록 색: CSS 변수 --block 이 있으면 그것, 아니면 버튼 배경색, 투명(ghost)이면 패널색
     const custom = cs.getPropertyValue('--block').trim();
     let bg = cssColor(custom || cs.backgroundColor);
-    if (bg.alpha < 0.1) bg = cssColor(getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff');
-    b.mat.color.set(bg.hex);
+    const ghost = bg.alpha < 0.1;
+    if (ghost) bg = cssColor(getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff');
+    // 몸통 = 같은 색을 어둡게 (밝은 패널색 버튼은 테두리색 쪽으로)
+    const edge = new THREE.Color(bg.hex);
+    const hsl = { h: 0, s: 0, l: 0 };
+    edge.getHSL(hsl);
+    // 아주 밝은(패널색) 버튼은 테마의 블록 모서리색(--edge)으로 — 흐리멍덩한 연노랑이 되지 않게
+    if (hsl.l > 0.85) edge.set(cssColor(getComputedStyle(document.documentElement).getPropertyValue('--edge').trim() || '#ccc').hex);
+    else edge.setHSL(hsl.h, Math.min(1, hsl.s * 1.05), Math.max(0, hsl.l * 0.72));
+    b.mat.color.copy(edge);
 
     const dpr = Math.min(devicePixelRatio || 1, 2);
     const c = b.canvas;
@@ -170,8 +200,7 @@ export class UiBlocks {
       c.height = ch;
       // GPU 쪽 텍스처는 처음 크기로 잡혀 있어서, 크기가 바뀌면 새 텍스처로 갈아 끼운다
       b.tex.dispose();
-      b.tex = new THREE.CanvasTexture(c);
-      b.tex.colorSpace = THREE.SRGBColorSpace;
+      b.tex = crispTexture(c);
       b.faceMat.map = b.tex;
       b.faceMat.needsUpdate = true;
     }
@@ -183,12 +212,18 @@ export class UiBlocks {
     g.roundRect(0, 0, r.width, r.height, Math.min(16, r.height * 0.3, r.width * 0.3));
     g.fillStyle = bg.hex;
     g.fill();
-    // 위쪽이 살짝 밝은 광택
-    const shine = g.createLinearGradient(0, 0, 0, r.height * 0.6);
-    shine.addColorStop(0, 'rgba(255,255,255,0.28)');
-    shine.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = shine;
-    g.fill();
+    // 윤곽선: 몸통색으로 얇게 — 밝은 버튼이 배경에 묻히지 않게
+    g.lineWidth = 1.5;
+    g.strokeStyle = `#${b.mat.color.getHexString()}`;
+    g.beginPath();
+    g.roundRect(0.75, 0.75, r.width - 1.5, r.height - 1.5, Math.min(16, r.height * 0.3, r.width * 0.3));
+    g.stroke();
+    // 키보드 포커스 링
+    if (el.matches(':focus-visible')) {
+      g.lineWidth = 3;
+      g.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d9643a';
+      g.stroke();
+    }
 
     // 배경·테두리가 있는 자식 (힌트 개수 배지, kbd 등)
     el.querySelectorAll<HTMLElement>('*').forEach((ch) => {

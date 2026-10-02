@@ -42,6 +42,11 @@ export class AiSolver {
     this.wait = profile.sec * (1 + rand());
   }
 
+  /** 침에 맞음: 그동안 손을 못 댄다 */
+  stun(sec: number): void {
+    this.wait += sec;
+  }
+
   get done(): boolean {
     return this.filled >= this.total;
   }

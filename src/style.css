@@ -207,8 +207,7 @@ input:focus {
   gap: 16px;
   padding: 32px 40px;
   border-radius: 28px;
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--panel);
   border: 1.5px solid var(--line);
   box-shadow: var(--shadow);
 }
@@ -354,6 +353,7 @@ input:focus {
 
 /* ── 게임 화면 */
 .play {
+  --size: min(62vh, 560px);
   flex-direction: row;
   align-items: stretch;
   justify-content: center;
@@ -454,7 +454,6 @@ input:focus {
   position: relative;
 }
 .board {
-  --size: min(62vh, 560px);
   width: var(--size);
   height: var(--size);
   display: grid;
@@ -706,7 +705,7 @@ input:focus {
   display: grid;
   grid-template-columns: repeat(9, 1fr);
   gap: 6px;
-  width: min(62vh, 560px);
+  width: var(--size);
 }
 .digit {
   position: relative;
@@ -1156,4 +1155,395 @@ input {
 }
 #end-now {
   margin-top: 4px;
+}
+
+/* ───────── 아이템전 ───────── */
+/* 침 자국: 판 전체를 덮었다가 SPIT_MS 뒤 걷힌다 */
+.board-wrap,
+.mini,
+.pv {
+  position: relative;
+}
+.splat {
+  position: absolute;
+  inset: -6%;
+  z-index: 6;
+  pointer-events: none;
+  animation: splat-in 0.2s cubic-bezier(0.2, 1.6, 0.4, 1);
+  transition:
+    opacity 0.35s,
+    transform 0.35s;
+}
+.splat svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+/* 판 위 침은 판 둘레 조금까지만 — 위쪽 타이머·버튼은 가리지 않는다 */
+.splat.big {
+  inset: -10px;
+  clip-path: inset(0 round 22px);
+}
+.splat .goo {
+  fill: #d4eeff;
+  stroke: #9ccbe8;
+  stroke-width: 0.6;
+  filter: drop-shadow(0 2px 3px rgba(40, 90, 130, 0.35));
+}
+.splat .shine {
+  fill: rgba(255, 255, 255, 0.85);
+}
+.splat .bubbles circle {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-width: 0.7;
+}
+.splat .drip {
+  transform-box: fill-box;
+  transform-origin: top;
+  animation: drip 1s ease-in forwards;
+}
+.splat b {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: clamp(40px, 9vw, 84px);
+  color: #4c97c4;
+  text-shadow:
+    0 3px 0 #fff,
+    0 0 18px rgba(255, 255, 255, 0.9);
+  animation: pop 0.45s cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+.splat.off {
+  opacity: 0;
+  transform: scale(1.06) translateY(8px);
+}
+@keyframes splat-in {
+  from {
+    transform: scale(0.3);
+    opacity: 0.4;
+  }
+}
+@keyframes drip {
+  from {
+    transform: scaleY(0.2);
+  }
+  to {
+    transform: scaleY(1.4);
+  }
+}
+
+/* 상대 판 미리보기 (순위표 줄 안) */
+.pv {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 1px;
+  width: 54px;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--soft);
+}
+.pv i {
+  aspect-ratio: 1;
+  border-radius: 1px;
+  background: var(--panel);
+}
+.pv i.g {
+  background: var(--line);
+}
+.pv i.f {
+  background: var(--own);
+}
+
+/* 콤보 게이지 */
+.chip.combo {
+  position: relative;
+  overflow: hidden;
+  color: var(--accent);
+  font-family: Nunito, sans-serif;
+  font-weight: 800;
+}
+.chip.combo i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  background: var(--accent);
+}
+.chip.combo.hot {
+  background: var(--accent);
+  color: var(--accent-ink);
+  animation: hot 0.5s ease-in-out infinite alternate;
+}
+.chip.combo.hot i {
+  background: var(--accent-ink);
+}
+@keyframes hot {
+  to {
+    transform: scale(1.08);
+  }
+}
+.levels.mode {
+  width: min(360px, 100%);
+}
+
+/* ───────── 반응형 ───────── */
+button,
+.cell,
+.digit {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 노트북 폭: 양옆 패널을 줄이고 판도 조금 작게 */
+@media (max-width: 1180px) {
+  .play {
+    --size: min(60vh, 480px);
+    gap: 16px;
+    padding: 16px;
+  }
+  .side,
+  .chat-slot {
+    width: 220px;
+  }
+}
+
+/* 태블릿·폰: 한 줄로 쌓는다 — HUD · 순위 띠 · 판 · 숫자패드 · 채팅 */
+@media (max-width: 900px) {
+  .screen {
+    min-height: 100dvh;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    justify-content: flex-start;
+  }
+  .play {
+    --size: min(calc(100vw - 32px), 56dvh, 560px);
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding-top: max(56px, env(safe-area-inset-top));
+  }
+  .center {
+    order: 1;
+    gap: 10px;
+  }
+  .side {
+    order: 0;
+    width: var(--size);
+    align-self: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px;
+    gap: 8px;
+    border-radius: 18px;
+  }
+  .side h3,
+  .side .hint {
+    display: none;
+  }
+  .side .standings {
+    flex: 1;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 6px;
+    scrollbar-width: none;
+  }
+  /* 폰의 순위 띠: 메달·아바타·미리보기·기록만 (이름은 아바타 글자로) */
+  .side .stand {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 8px 6px 4px;
+    gap: 6px;
+  }
+  .side .stand .who {
+    display: none;
+  }
+  .side .stand strong {
+    margin-left: auto;
+  }
+  .stand .place {
+    width: 18px;
+    font-size: 14px;
+  }
+  .side .avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
+  }
+  .stand strong {
+    font-size: 16px;
+  }
+  .stand .pv {
+    width: 36px;
+  }
+  .side .mini {
+    width: 64px;
+    padding: 3px;
+    gap: 1px;
+  }
+  .side #end-now {
+    flex-basis: 100%;
+  }
+  .chat-slot {
+    order: 2;
+    width: var(--size);
+    height: 300px;
+  }
+  .chat {
+    min-height: 0;
+  }
+  .hud {
+    width: var(--size);
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .timer {
+    font-size: 24px;
+  }
+  .hud .chip {
+    font-size: 12px;
+    padding: 3px 9px;
+  }
+  /* 한 줄에 들어가도록: 난이도 칩은 숨기고 버튼은 작게 */
+  .hud .chip:first-child {
+    display: none;
+  }
+  .hud .ghost {
+    padding: 5px 9px;
+    font-size: 13px;
+  }
+  .pad {
+    gap: 4px;
+  }
+  .digit {
+    padding: 8px 0;
+    font-size: clamp(18px, 5vw, 24px);
+  }
+  .digit small {
+    right: 3px;
+    top: 1px;
+    font-size: 9px;
+  }
+  .tools {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tool {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  .tool kbd {
+    display: none;
+  }
+  .banner {
+    white-space: normal;
+    width: max-content;
+    max-width: 92%;
+    text-align: center;
+    font-size: 14px;
+  }
+  .countdown {
+    font-size: 80px;
+  }
+
+  .lobby {
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .lobby .chat-slot {
+    width: min(480px, 100%);
+    height: 320px;
+  }
+  .lobby-main {
+    padding: 18px;
+  }
+  .code-box b {
+    font-size: 26px;
+    letter-spacing: 4px;
+  }
+
+  .bots {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    width: 100%;
+    gap: 12px;
+  }
+  .bot {
+    padding: 16px 10px;
+  }
+  .bot img {
+    width: 72px;
+    height: 72px;
+  }
+
+  .dialog {
+    min-width: 0;
+    width: min(420px, calc(100vw - 32px));
+    padding: 24px 18px;
+  }
+  .standings.final {
+    min-width: 0;
+  }
+  .standings.final .stand {
+    min-width: 0;
+  }
+  .standings.final .stand .who small {
+    display: block;
+  }
+  /* iOS 는 16px 보다 작은 입력칸에 포커스하면 화면을 확대한다 */
+  input {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .menu-card {
+    padding: 22px 16px;
+    gap: 12px;
+    width: 100%;
+  }
+  .menu h1 {
+    font-size: 34px;
+  }
+  .menu .logo {
+    width: 80px;
+  }
+  .menu-grid {
+    gap: 10px;
+  }
+  .big {
+    padding: 14px 8px;
+  }
+  .big img {
+    width: 52px;
+    height: 52px;
+  }
+  .big span {
+    font-size: 12px;
+  }
+  .field input {
+    width: 160px;
+  }
+  .bots {
+    grid-template-columns: 1fr;
+  }
+  .bot {
+    flex-direction: row;
+    text-align: left;
+    gap: 12px;
+  }
+  .bot img {
+    width: 56px;
+    height: 56px;
+  }
+  .setup h2 {
+    font-size: 20px;
+  }
+  .cell {
+    font-size: calc(var(--size) / 13);
+  }
 }

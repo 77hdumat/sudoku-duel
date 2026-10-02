@@ -16,6 +16,8 @@ const PALETTES: Record<string, number[]> = {
 };
 
 const reduceMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** 폰·태블릿(터치 위주·좁은 화면)은 배경 오브젝트를 줄여 배터리·발열을 아낀다 */
+const light = typeof matchMedia !== 'undefined' && (matchMedia('(pointer: coarse)').matches || innerWidth < 700);
 
 interface Particle {
   x: number;
@@ -177,7 +179,7 @@ export class Fx {
 
   constructor() {
     try {
-      this.bgR = this.mkRenderer('fx-bg', 1.5);
+      this.bgR = this.mkRenderer('fx-bg', light ? 1.5 : 2);
       this.fxR = this.mkRenderer('fx-top', 2);
     } catch {
       return;
@@ -236,7 +238,7 @@ export class Fx {
       if (z > -14 && Math.abs(x) < halfW * 0.4) x = Math.sign(x || 1) * rand(halfW * 0.4, halfW * 0.95);
       return [x, rand(-halfH, halfH) * 0.92, z];
     };
-    const n = reduceMotion ? 12 : 46;
+    const n = reduceMotion ? 12 : light ? 20 : 46;
     for (let k = 0; k < n; k++) {
       const mat = new THREE.MeshStandardMaterial({ roughness: 0.5 });
       this.tinted.push(mat);
@@ -248,7 +250,7 @@ export class Fx {
       this.addFloater(mesh, x, y, z, rand(0.5, 1.25), false);
     }
     const bubble = new THREE.SphereGeometry(0.5, 20, 14);
-    for (let k = 0; k < (reduceMotion ? 8 : 30); k++) {
+    for (let k = 0; k < (reduceMotion ? 8 : light ? 12 : 30); k++) {
       const mat = new THREE.MeshStandardMaterial({ roughness: 0.15, transparent: true, opacity: 0.45 });
       this.tinted.push(mat);
       const [x, y, z] = spot(-24, -2);
@@ -256,7 +258,7 @@ export class Fx {
     }
     const star = extrude(starShape());
     const heart = extrude(heartShape());
-    for (let k = 0; k < (reduceMotion ? 6 : 26); k++) {
+    for (let k = 0; k < (reduceMotion ? 6 : light ? 10 : 26); k++) {
       const mat = new THREE.MeshStandardMaterial({ roughness: 0.3 });
       this.tinted.push(mat);
       const [x, y, z] = spot(-26, -3);
@@ -448,6 +450,41 @@ export class Fx {
         this.fxScene.remove(mesh);
         mesh.geometry.dispose();
         mat.dispose();
+      },
+    });
+  }
+
+  /**
+   * 침 덩어리가 a 에서 b 로 포물선을 그리며 날아가고 물방울 꼬리를 남긴다. 도착하면 철퍽 튀고 onHit.
+   * WebGL 이 없어도 onHit 은 부른다 (게임 진행이 이펙트에 매이지 않게).
+   */
+  projectile(a: { x: number; y: number }, b: { x: number; y: number }, color: string, onHit: () => void, dur = 0.55): void {
+    if (!this.ok) return void setTimeout(onHit, dur * 1000);
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.15, transparent: true, opacity: 0.92 });
+    const glob = new THREE.Mesh(new THREE.SphereGeometry(14, 20, 14), mat);
+    this.fxScene.add(glob);
+    const lift = Math.min(260, 80 + Math.hypot(b.x - a.x, b.y - a.y) * 0.35);
+    let trail = 0;
+    this.tweens.push({
+      t: 0,
+      life: dur,
+      step: (k) => {
+        const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+        const x = a.x + (b.x - a.x) * e;
+        const y = a.y + (b.y - a.y) * e - Math.sin(Math.PI * k) * lift;
+        glob.position.set(x, -y, 400);
+        // 날아가며 출렁
+        const wob = 1 + Math.sin(k * 30) * 0.15;
+        glob.scale.set(wob, 2 - wob, 1);
+        if ((trail += 1) % 2 === 0) this.burst(x, y, [color, '#ffffff'], { count: 2, power: 40, size: 5, shapes: [2] });
+      },
+      done: () => {
+        this.fxScene.remove(glob);
+        glob.geometry.dispose();
+        mat.dispose();
+        this.burst(b.x, b.y, [color, '#ffffff', '#cfefff'], { count: 26, power: 340, size: 8, shapes: [2, 2, 1] });
+        this.ring(b.x, b.y, color, 70);
+        onHit();
       },
     });
   }

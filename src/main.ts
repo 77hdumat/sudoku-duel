@@ -1,12 +1,13 @@
 import './style.css';
 import { AI_PROFILES, AiSolver } from './game/Ai';
 import { ClaimJudge, type ClaimEvent } from './game/Claim';
+import { ATTACK_COMBO, ComboMeter, pickTarget, SPIT_MS } from './game/Combo';
 import { places, rankRace, rankScore, type Entry } from './game/Ranking';
 import { fromStr, generate, HINTS, LEVELS, solve, toStr, type Grid, type Level } from './game/Sudoku';
 import { Fx } from './fx/Fx';
 import { sfx } from './fx/Sfx';
 import { Net, type NetError } from './net/Net';
-import { CHAT_MAX, cleanText, FREEZE_MS, MAX_PLAYERS, NAME_MAX, RULES, type Msg, type PlayerInfo, type ResultRow, type Rule } from './net/Protocol';
+import { CHAT_MAX, cleanText, FREEZE_MS, isRace, MAX_PLAYERS, NAME_MAX, RULES, type Msg, type PlayerInfo, type ResultRow, type Rule } from './net/Protocol';
 import { Board } from './ui/Board';
 
 const app = document.getElementById('app')!;
@@ -158,17 +159,80 @@ function wireInputSounds(board: Board): void {
   board.onInput = (k) => (k === 'select' ? sfx.select() : k === 'note' ? sfx.note() : k === 'auto' ? sfx.hint() : sfx.wrong());
 }
 
-/** 개인판(싱글·레이스형) 보드에 정답·오답·힌트 이펙트를 연결 */
-function wirePersonalFx(board: Board, color: string): void {
+/**
+ * 개인판(싱글·레이스형·아이템전) 보드에 정답·오답·힌트 이펙트를 연결.
+ * meter 가 있으면(아이템전) 빠른 연속 정답을 세다가 차면 onAttack.
+ */
+function wirePersonalFx(board: Board, color: string, meter?: ComboMeter, onAttack?: () => void): void {
   board.onCorrect = (i, hint, units) => {
     combo = hint ? combo : combo + 1;
     if (hint) sfx.hint();
     else sfx.correct(combo - 1);
     cellFx(board, i, hint ? '#f2c94c' : color, true, units, hint ? '💡' : combo >= 3 ? `${combo} 콤보!` : undefined);
+    if (!meter || hint) return;
+    if (meter.hit(performance.now())) onAttack?.();
+    else setTimeout(() => sfx.comboUp(meter.chain), 140);
   };
-  board.onWrong = (i) => wrongFx(board, i);
+  board.onWrong = (i) => {
+    wrongFx(board, i);
+    meter?.miss();
+  };
   wireInputSounds(board);
 }
+
+// ───────────────────────── 아이템: 침 퉤 ─────────────────────────
+
+const SPIT_COLOR = '#bfe6ff';
+
+/** 매번 모양이 다른 침 자국 SVG — 판 전체를 덮을 만큼 크다 */
+function splatSvg(): string {
+  const R = Math.random;
+  const blob = (cx: number, cy: number, r: number, n = 16) => {
+    const pts = Array.from({ length: n }, (_, k) => {
+      const a = (k / n) * Math.PI * 2;
+      const rr = r * (0.78 + R() * 0.4);
+      return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr];
+    });
+    // 이웃 점의 중점을 잇는 2차 곡선으로 말랑한 윤곽
+    let d = '';
+    pts.forEach((p, k) => {
+      const q = pts[(k + 1) % n];
+      const m = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+      d += k ? ` Q${p[0].toFixed(1)} ${p[1].toFixed(1)} ${m[0].toFixed(1)} ${m[1].toFixed(1)}` : `M${m[0].toFixed(1)} ${m[1].toFixed(1)}`;
+    });
+    return `<path d="${d} Z"/>`;
+  };
+  let drops = '';
+  for (let k = 0; k < 9; k++) drops += blob(R() * 100, R() * 100, 4 + R() * 7, 9);
+  let drips = '';
+  for (let k = 0; k < 6; k++) {
+    const x = 12 + R() * 76;
+    drips += `<rect class="drip" x="${x.toFixed(1)}" y="${(70 + R() * 15).toFixed(1)}" width="${(3 + R() * 3).toFixed(1)}" height="${(14 + R() * 18).toFixed(1)}" rx="2" style="animation-delay:${(R() * 0.3).toFixed(2)}s"/>`;
+  }
+  let bubbles = '';
+  for (let k = 0; k < 7; k++) bubbles += `<circle cx="${(15 + R() * 70).toFixed(1)}" cy="${(15 + R() * 60).toFixed(1)}" r="${(1.5 + R() * 3).toFixed(1)}"/>`;
+  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+    <g class="goo">${blob(50, 48, 64, 22)}${drops}${drips}</g>
+    <g class="shine"><ellipse cx="34" cy="28" rx="13" ry="6" transform="rotate(-25 34 28)"/><ellipse cx="66" cy="62" rx="6" ry="3"/></g>
+    <g class="bubbles">${bubbles}</g>
+  </svg>`;
+}
+
+/** el(보드·미리보기) 위에 침을 덮었다가 ms 뒤 걷는다 */
+function spitOn(el: Element | null, big: boolean, ms = SPIT_MS): void {
+  if (!el) return;
+  const d = document.createElement('div');
+  d.className = `splat${big ? ' big' : ''}`;
+  d.innerHTML = splatSvg() + (big ? '<b>퉤!</b>' : '');
+  el.appendChild(d);
+  setTimeout(() => d.classList.add('off'), ms);
+  setTimeout(() => d.remove(), ms + 400);
+}
+
+const centerOf = (el: Element | null) => {
+  const r = el?.getBoundingClientRect();
+  return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: innerWidth / 2, y: innerHeight / 2 };
+};
 
 // ───────────────────────── 공통 게임 화면 ─────────────────────────
 
@@ -196,6 +260,8 @@ interface PlayOpts {
   tick?(dt: number): void;
   /** 있으면 HUD 에 '포기' 버튼 */
   onGiveUp?(): void;
+  /** 아이템전: HUD 에 콤보 게이지 */
+  meter?: ComboMeter;
   onQuit(): void;
 }
 
@@ -208,6 +274,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         <span class="chip">${LEVELS[o.level].label}</span>${o.tag ? `<span class="chip accent">${o.tag}</span>` : ''}
         <span class="timer" id="timer">0:00</span>
         <span class="chip" id="miss">실수 0</span>
+        ${o.meter ? `<span class="chip combo" id="combo">⚡ <b>0</b>/${ATTACK_COMBO}<i></i></span>` : ''}
         ${o.onGiveUp ? '<button class="ghost" id="giveup">포기</button>' : ''}
         <button class="ghost" id="quit">나가기</button>
       </div>
@@ -293,6 +360,12 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     if (h.ended) return;
     timer.textContent = fmt(h.elapsed());
     $('#miss')!.textContent = `실수 ${board.mistakes}`;
+    if (o.meter) {
+      const c = $('#combo');
+      c!.querySelector('b')!.textContent = String(o.meter.chain);
+      c!.querySelector('i')!.style.width = `${o.meter.left(performance.now()) * 100}%`;
+      c!.classList.toggle('hot', o.meter.chain >= ATTACK_COMBO - 1);
+    }
   };
   raf = requestAnimationFrame(loop);
   cleanup = () => {
@@ -310,6 +383,8 @@ interface Racer extends Entry {
   color: string;
   avatar: string;
   me: boolean;
+  /** 상대 판 미리보기 (g 주어진 칸, 1 채운 칸, 0 빈칸) */
+  cells?: string;
   /** AI 가 끝까지 풀었다고 치고 계산한 시간 */
   projected?: boolean;
 }
@@ -334,11 +409,13 @@ function renderStandings(el: HTMLElement | null, racers: Racer[], claim: boolean
           : e.gaveUp
             ? '포기'
             : `${Math.round((e.filled / total) * 100)}%`;
+      const miss = e.mistakes ? ` · 실수 ${e.mistakes}` : '';
+      const pv = e.cells && !e.me ? `<div class="pv" data-pv="${e.id}">${[...e.cells].map((c) => `<i class="${c === 'g' ? 'g' : c === '1' ? 'f' : ''}"></i>`).join('')}</div>` : '';
       const pct = claim ? 0 : e.ms != null ? 100 : (e.filled / total) * 100;
       return `<div class="stand${e.me ? ' me' : ''}${e.ms != null ? ' done' : ''}${e.gaveUp ? ' out' : ''}" data-key="${e.id}" style="--own:${e.color}">
         <span class="place">${MEDALS[pl[i] - 1] ?? pl[i]}</span>${e.avatar}
-        <div class="who"><b>${esc(e.name)}</b><small>${sub}</small>${claim ? '' : `<div class="bar"><i style="width:${pct}%"></i></div>`}</div>
-        <strong>${value}</strong>
+        <div class="who"><b>${esc(e.name)}</b><small>${sub}${miss}</small>${claim ? '' : `<div class="bar"><i style="width:${pct}%"></i></div>`}</div>
+        ${pv}<strong>${value}</strong>
       </div>`;
     })
     .join('');
@@ -378,10 +455,15 @@ function celebrate(won: boolean): void {
 // ───────────────────────── 싱글 (AI 대결) ─────────────────────────
 
 function singleSetup(): void {
+  let items = store.get('singleItems', '0') === '1';
   show(`
   <div class="screen setup">
     <button class="ghost back" id="back">← 메뉴</button>
     <h2>상대할 AI 를 고르세요</h2>
+    <div class="levels mode" id="mode">
+      <button data-mode="0">일반</button><button data-mode="1">아이템전 💦</button>
+    </div>
+    <p class="hint" id="mode-desc"></p>
     <div class="bots">
       ${LEVEL_KEYS.map((l) => {
         const p = AI_PROFILES[l];
@@ -393,32 +475,50 @@ function singleSetup(): void {
       }).join('')}
     </div>
   </div>`);
+  const paint = () => {
+    app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('on', (b.dataset.mode === '1') === items));
+    $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('1등에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : '먼저 끝나도 계속! 완주 시간 순으로 순위가 정해져요.';
+  };
+  app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        items = b.dataset.mode === '1';
+        store.set('singleItems', items ? '1' : '0');
+        paint();
+      }),
+  );
+  paint();
   $('#back')!.onclick = () => menu();
-  app.querySelectorAll<HTMLButtonElement>('[data-level]').forEach((b) => (b.onclick = () => startSingle(b.dataset.level as Level)));
+  app.querySelectorAll<HTMLButtonElement>('[data-level]').forEach((b) => (b.onclick = () => startSingle(b.dataset.level as Level, items)));
 }
 
-function startSingle(level: Level): void {
+function startSingle(level: Level, items: boolean): void {
   const { puzzle, solution } = generate(level);
   const prof = AI_PROFILES[level];
   const ai = new AiSolver(puzzle, solution, prof);
   const total = ai.total;
   const me: PlayerInfo = { id: 0, name: myName };
-  const meR: Racer = { id: 0, name: myName, color: colorOf(0), avatar: avatar(me), me: true, filled: 0, ms: null };
-  const aiR: Racer = { id: 1, name: prof.name, color: '#8a93a6', avatar: `<img class="avatar pic" src="${prof.avatar}" alt="" />`, me: false, filled: 0, ms: null };
+  const meR: Racer = { id: 0, name: myName, color: colorOf(0), avatar: avatar(me), me: true, filled: 0, ms: null, mistakes: 0 };
+  const aiR: Racer = { id: 1, name: prof.name, color: '#8a93a6', avatar: `<img class="avatar pic" src="${prof.avatar}" alt="" />`, me: false, filled: 0, ms: null, mistakes: 0 };
+  const meter = items ? new ComboMeter() : undefined;
+  const aiMeter = new ComboMeter();
   let done = false;
 
   const h = play(puzzle, solution, {
     level,
     color: colorOf(0),
+    tag: items ? RULES.item.label : undefined,
     chat: false,
+    meter,
     side: `
       <h3>실시간 순위</h3>
       <div class="standings" id="stand"></div>
       <p class="hint mini-title">${prof.name} 의 판</p>
       <div class="mini" id="ai-mini">${puzzle.map((v) => `<i class="${v ? 'g' : ''}"></i>`).join('')}</div>
       <p class="hint">먼저 끝나도 계속! 완주 시간 순으로 순위가 정해져요.</p>`,
-    onProgress(f) {
+    onProgress(f, m) {
       meR.filled = f;
+      meR.mistakes = m;
       refresh();
     },
     onSolved(ms) {
@@ -427,15 +527,22 @@ function startSingle(level: Level): void {
     },
     tick(dt) {
       if (aiR.ms != null || done) return;
-      const before = ai.filled + ai.mistakes;
+      const filled = ai.filled;
+      const mistakes = ai.mistakes;
       ai.update(dt);
-      if (ai.filled + ai.mistakes === before) return;
+      if (ai.filled === filled && ai.mistakes === mistakes) return;
       aiR.filled = ai.filled;
+      aiR.mistakes = ai.mistakes;
       const mini = $('#ai-mini')!.children;
       ai.grid.forEach((v, i) => {
         if (!puzzle[i]) mini[i].className = i === ai.wrongCell ? 'x' : v ? 'f' : '';
       });
       if (ai.lastCell >= 0) mini[ai.lastCell].classList.add('pop');
+      // 아이템전: AI 도 빠른 연속 정답이면 나에게 퉤 (내가 아직 푸는 중일 때만)
+      if (items) {
+        if (ai.mistakes > mistakes) aiMeter.miss();
+        for (let k = filled; k < ai.filled; k++) if (aiMeter.hit(h.elapsed()) && meR.ms == null && !meR.gaveUp) aiAttack();
+      }
       if (ai.done) {
         aiR.ms = h.elapsed();
         sfx.claimOther();
@@ -450,8 +557,25 @@ function startSingle(level: Level): void {
     },
     onQuit: () => menu(),
   });
-  wirePersonalFx(h.board, colorOf(0));
+  wirePersonalFx(h.board, colorOf(0), meter, () => {
+    if (aiR.ms != null || done) return;
+    sfx.whoosh();
+    fx.projectile(centerOf($('#board')), centerOf($('#ai-mini')), SPIT_COLOR, () => {
+      sfx.spit();
+      spitOn($('#ai-mini'), false);
+      ai.stun(SPIT_MS / 1000);
+    });
+  });
   refresh();
+
+  function aiAttack(): void {
+    sfx.whoosh();
+    fx.projectile(centerOf($('#ai-mini')), centerOf($('#board')), SPIT_COLOR, () => {
+      if (done) return;
+      sfx.spit();
+      spitOn($('.board-wrap'), true);
+    });
+  }
 
   function refresh(): void {
     renderStandings($('#stand'), [meR, aiR], false, total);
@@ -469,6 +593,7 @@ function startSingle(level: Level): void {
       }
       aiR.ms = t * 1000;
       aiR.filled = ai.filled;
+      aiR.mistakes = ai.mistakes;
       aiR.projected = true;
     }
     h.banner('');
@@ -480,7 +605,7 @@ function startSingle(level: Level): void {
       total,
       '<button id="again">한 판 더</button><button class="ghost" id="other">다른 AI</button><button class="ghost" id="home">메뉴</button>',
     );
-    d.querySelector<HTMLButtonElement>('#again')!.onclick = () => startSingle(level);
+    d.querySelector<HTMLButtonElement>('#again')!.onclick = () => startSingle(level, items);
     d.querySelector<HTMLButtonElement>('#other')!.onclick = () => singleSetup();
     d.querySelector<HTMLButtonElement>('#home')!.onclick = () => menu();
   }
@@ -497,9 +622,13 @@ interface Room {
   phase: 'lobby' | 'play';
   total: number;
   /** 레이스형 진행률·완주 시간·포기 */
-  progress: Map<number, { filled: number; mistakes: number }>;
+  progress: Map<number, { filled: number; mistakes: number; cells?: string }>;
   finishes: Map<number, number>;
   gaveUp: Set<number>;
+  /** 점령형 오답 수 */
+  misses: Map<number, number>;
+  /** 아이템전: 방장이 공격을 너무 자주 받지 않게 막는 마지막 공격 시각 */
+  lastAttack: Map<number, number>;
   /** 점령형 점수·가져간 칸 수 (claim/miss 메시지로 모두가 같은 값을 센다) */
   scores: Map<number, number>;
   cells: Map<number, number>;
@@ -547,6 +676,8 @@ function newRoom(host: boolean): Room {
     progress: new Map(),
     finishes: new Map(),
     gaveUp: new Set(),
+    misses: new Map(),
+    lastAttack: new Map(),
     scores: new Map(),
     cells: new Map(),
     judge: null,
@@ -612,7 +743,7 @@ function createRoom(): void {
     if (r.phase !== 'play' || r.result) return;
     // 혼자 남으면 대결이 성립하지 않으니 끝내고, 레이스는 남은 사람이 다 끝났는지 다시 본다
     if (r.players.length < 2) endGame();
-    else if (r.rule === 'race') checkRaceEnd();
+    else if (isRace(r.rule)) checkRaceEnd();
   };
   n.onMessage = (m, from) => {
     switch (m.t) {
@@ -639,8 +770,9 @@ function createRoom(): void {
         return;
       }
       case 'progress': {
-        if (r.phase !== 'play' || r.rule !== 'race') return;
-        const out: Msg = { t: 'progress', id: from, filled: Number(m.filled) | 0, mistakes: Number(m.mistakes) | 0 };
+        if (r.phase !== 'play' || !isRace(r.rule)) return;
+        const cells = typeof m.cells === 'string' && /^[g01]{81}$/.test(m.cells) ? m.cells : undefined;
+        const out: Msg = { t: 'progress', id: from, filled: Number(m.filled) | 0, mistakes: Number(m.mistakes) | 0, cells };
         n.broadcast(out);
         applyProgress(out);
         return;
@@ -649,6 +781,8 @@ function createRoom(): void {
         return hostFinish(from, Number(m.ms) || 0);
       case 'giveup':
         return hostGiveUp(from);
+      case 'attack':
+        return hostAttack(from);
       case 'place':
         return hostPlace(from, Number(m.cell), Number(m.v), !!m.hint);
     }
@@ -683,7 +817,7 @@ function hostPlace(id: number, cell: number, v: number, hint: boolean): void {
   if (r.judge.full) endGame();
 }
 
-const racing = (id: number) => !!room && room.phase === 'play' && room.rule === 'race' && !room.result && !room.finishes.has(id) && !room.gaveUp.has(id);
+const racing = (id: number) => !!room && room.phase === 'play' && isRace(room.rule) && !room.result && !room.finishes.has(id) && !room.gaveUp.has(id);
 
 function hostFinish(id: number, ms: number): void {
   if (!racing(id)) return;
@@ -699,6 +833,21 @@ function hostGiveUp(id: number): void {
   net?.broadcast(m);
   applyGaveUp(m);
   checkRaceEnd();
+}
+
+/** 아이템전 콤보 공격: 방장이 대상(푸는 중인 사람 중 1등)을 골라 모두에게 알린다 */
+function hostAttack(from: number): void {
+  const r = room;
+  if (!r || r.rule !== 'item' || !racing(from)) return;
+  const now = performance.now();
+  // 빠른 3콤보는 아무리 빨라도 1초는 걸린다 — 그보다 잦은 공격은 무시
+  if (now - (r.lastAttack.get(from) ?? -1e9) < 1000) return;
+  const to = pickTarget(from, racers());
+  if (to == null) return;
+  r.lastAttack.set(from, now);
+  const m: Msg = { t: 'spit', from, to };
+  net?.broadcast(m);
+  applySpit(m);
 }
 
 function checkRaceEnd(): void {
@@ -717,6 +866,7 @@ function endGame(): void {
     ms: claim ? null : (r.finishes.get(p.id) ?? null),
     score: claim ? (r.scores.get(p.id) ?? 0) : undefined,
     gaveUp: r.gaveUp.has(p.id) || undefined,
+    mistakes: claim ? (r.misses.get(p.id) ?? 0) : (r.progress.get(p.id)?.mistakes ?? 0),
   }));
   const m: Msg = { t: 'result', rows };
   net?.broadcast(m);
@@ -759,6 +909,8 @@ function joinRoom(code: string): void {
         return applyFinished(m);
       case 'gaveup':
         return applyGaveUp(m);
+      case 'spit':
+        return applySpit(m);
       case 'claim':
       case 'miss':
         return applyClaimEvent(m);
@@ -835,6 +987,8 @@ function racers(): Racer[] {
     ms: claim ? null : (r.finishes.get(p.id) ?? null),
     score: claim ? (r.scores.get(p.id) ?? 0) : undefined,
     gaveUp: r.gaveUp.has(p.id),
+    mistakes: claim ? (r.misses.get(p.id) ?? 0) : (r.progress.get(p.id)?.mistakes ?? 0),
+    cells: claim ? undefined : r.progress.get(p.id)?.cells,
   }));
 }
 
@@ -864,13 +1018,40 @@ function refreshPlayers(): void {
     $('#left')!.textContent = `남은 칸 ${left}`;
   }
   // 레이스: 누군가 완주하면 방장은 남은 사람을 기다리지 않고 끝낼 수 있다
-  $('#end-now')?.classList.toggle('hidden', !(r.host && r.rule === 'race' && r.finishes.size > 0 && !r.result));
+  $('#end-now')?.classList.toggle('hidden', !(r.host && isRace(r.rule) && r.finishes.size > 0 && !r.result));
+  // 순위표를 새로 그리면 미리보기 위 침 자국이 사라지므로, 아직 맞고 있는 사람은 다시 덮는다
+  for (const [id, until] of spitted) {
+    if (performance.now() < until) spitOn($(`[data-pv="${id}"]`), false, until - performance.now());
+    else spitted.delete(id);
+  }
 }
 
-function applyProgress(m: { id: number; filled: number; mistakes: number }): void {
+function applyProgress(m: { id: number; filled: number; mistakes: number; cells?: string }): void {
   if (!room || room.phase !== 'play') return;
-  room.progress.set(m.id, { filled: m.filled, mistakes: m.mistakes });
+  room.progress.set(m.id, { filled: m.filled, mistakes: m.mistakes, cells: m.cells ?? room.progress.get(m.id)?.cells });
   refreshPlayers();
+}
+
+/** 침 맞는 중인 상대 (미리보기 다시 그릴 때 자국 유지용) */
+const spitted = new Map<number, number>();
+
+/** 침 퉤: 쏜 사람 → 맞은 사람으로 날아가는 연출. 내가 맞으면 내 판이 SPIT_MS 동안 가려진다 */
+function applySpit(m: { from: number; to: number }): void {
+  const r = room;
+  if (!r?.play || r.phase !== 'play' || r.result) return;
+  const spot = (id: number) => centerOf(id === r.myId ? $('#board') : $(`[data-pv="${id}"]`) ?? $(`.stand[data-key="${id}"]`));
+  addChat(`💦 ${nameOf(m.from)} → ${nameOf(m.to)} 퉤!`);
+  sfx.whoosh();
+  fx.projectile(spot(m.from), spot(m.to), SPIT_COLOR, () => {
+    if (m.to === r.myId) {
+      sfx.spit();
+      spitOn($('.board-wrap'), true);
+    } else {
+      sfx.claimOther();
+      spitted.set(m.to, performance.now() + SPIT_MS);
+      spitOn($(`[data-pv="${m.to}"]`), false);
+    }
+  });
 }
 
 function applyFinished(m: { id: number; ms: number }): void {
@@ -916,6 +1097,7 @@ function applyClaimEvent(ev: ClaimEvent): void {
     cellFx(board, ev.cell, colorOf(ev.id), mine, units, mine ? (ev.hint ? '💡+1' : '+1') : undefined);
   } else {
     r.scores.set(ev.id, (r.scores.get(ev.id) ?? 0) - 1);
+    r.misses.set(ev.id, (r.misses.get(ev.id) ?? 0) + 1);
     if (mine) {
       board.miss(ev.cell, FREEZE_MS);
       wrongFx(board, ev.cell);
@@ -937,12 +1119,17 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule): void {
   r.rule = rule;
   r.result = null;
   r.total = puzzle.filter((v) => !v).length;
-  r.progress = new Map(r.players.map((p) => [p.id, { filled: 0, mistakes: 0 }]));
+  const blank = puzzle.map((v) => (v ? 'g' : '0')).join('');
+  r.progress = new Map(r.players.map((p) => [p.id, { filled: 0, mistakes: 0, cells: blank }]));
   r.finishes = new Map();
   r.gaveUp = new Set();
+  r.misses = new Map();
+  r.lastAttack = new Map();
+  spitted.clear();
   r.scores = new Map(r.players.map((p) => [p.id, 0]));
   r.cells = new Map(r.players.map((p) => [p.id, 0]));
   const claim = rule === 'claim';
+  const meter = rule === 'item' ? new ComboMeter() : undefined;
   r.play = play(puzzle, solution, {
     level,
     color: colorOf(r.myId),
@@ -951,10 +1138,13 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule): void {
     shared: claim,
     side: claim
       ? `<h3>실시간 점수</h3><div class="standings" id="stand"></div><p class="hint"><span id="left"></span> · 맞히면 +1, 틀리면 -1 · 2초 정지</p>`
-      : `<h3>실시간 순위</h3><div class="standings" id="stand"></div><p class="hint">완주한 순서대로 시간이 기록돼요. 모두 끝나면 순위 발표!</p>${r.host ? '<button class="ghost hidden" id="end-now">지금 종료하고 순위 발표</button>' : ''}`,
+      : `<h3>실시간 순위</h3><div class="standings" id="stand"></div><p class="hint">${meter ? `⚡ 5초 안에 ${ATTACK_COMBO}연속 정답 → 1등에게 침 퉤!` : '완주한 순서대로 시간이 기록돼요. 모두 끝나면 순위 발표!'}</p>${r.host ? '<button class="ghost hidden" id="end-now">지금 종료하고 순위 발표</button>' : ''}`,
+    meter,
     onProgress(filled, mistakes) {
       if (claim) return;
-      const m: Msg = { t: 'progress', id: r.myId, filled, mistakes };
+      const b = r.play!.board;
+      const cells = b.grid.map((_, i) => (b.given[i] ? 'g' : b.done(i) ? '1' : '0')).join('');
+      const m: Msg = { t: 'progress', id: r.myId, filled, mistakes, cells };
       if (r.host) net?.broadcast(m);
       else net?.send(m);
       applyProgress(m);
@@ -979,7 +1169,11 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule): void {
       else net?.send({ t: 'place', cell, v, hint });
     };
     wireInputSounds(board);
-  } else wirePersonalFx(board, colorOf(r.myId));
+  } else
+    wirePersonalFx(board, colorOf(r.myId), meter, () => {
+      if (r.host) hostAttack(0);
+      else net?.send({ t: 'attack' });
+    });
   const endNow = $('#end-now');
   if (endNow) endNow.onclick = () => endGame();
   $('#chat-slot')!.appendChild(r.chat);
@@ -1000,8 +1194,9 @@ function onResult(rows: ResultRow[]): void {
     if (claim) {
       r.scores.set(row.id, row.score ?? 0);
       r.cells.set(row.id, row.filled);
+      r.misses.set(row.id, row.mistakes ?? 0);
     } else {
-      r.progress.set(row.id, { filled: row.filled, mistakes: r.progress.get(row.id)?.mistakes ?? 0 });
+      r.progress.set(row.id, { filled: row.filled, mistakes: row.mistakes ?? 0, cells: r.progress.get(row.id)?.cells });
       if (row.ms != null) r.finishes.set(row.id, row.ms);
       if (row.gaveUp) r.gaveUp.add(row.id);
     }
