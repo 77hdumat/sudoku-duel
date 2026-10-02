@@ -41,7 +41,7 @@ export class Board {
   onWrong: ((i: number) => void) | null = null;
   /** 공유판: 방장에게 보낼 입력 */
   onPlace: ((i: number, v: number, hint: boolean) => void) | null = null;
-  onInput: ((kind: 'select' | 'note' | 'blocked') => void) | null = null;
+  onInput: ((kind: 'select' | 'note' | 'blocked' | 'auto') => void) | null = null;
 
   private cells: HTMLElement[] = [];
   /** 고른 칸 네 모서리에 붙는 꺾쇠 커서 (칸 사이를 미끄러져 다닌다) */
@@ -60,6 +60,8 @@ export class Board {
     puzzle: Grid,
     private readonly solution: Grid,
     private readonly shared = false,
+    /** 고급 전용: 빈칸마다 지금 가능한 후보를 메모로 한 번에 채우는 버튼 */
+    private readonly autoNotes = false,
   ) {
     this.grid = puzzle.slice();
     this.given = puzzle.map(Boolean);
@@ -95,13 +97,15 @@ export class Board {
     tools.innerHTML =
       `<button class="tool" data-k="note">✎ 메모 <kbd>N</kbd></button>` +
       (shared ? '' : `<button class="tool" data-k="erase">⌫ 지우기</button>`) +
-      `<button class="tool hint" data-k="hint">💡 힌트 <b></b> <kbd>H</kbd></button>`;
+      `<button class="tool hint" data-k="hint">💡 힌트 <b></b> <kbd>H</kbd></button>` +
+      (autoNotes ? `<button class="tool" data-k="auto">✨ 자동 메모 <kbd>A</kbd></button>` : '');
     padEl.appendChild(tools);
     this.noteBtn = tools.querySelector('[data-k="note"]')!;
     this.noteBtn.addEventListener('click', () => this.toggleNotes());
     tools.querySelector('[data-k="erase"]')?.addEventListener('click', () => this.input(0));
     this.hintBtn = tools.querySelector('[data-k="hint"]')!;
     this.hintBtn.addEventListener('click', () => this.useHint());
+    tools.querySelector('[data-k="auto"]')?.addEventListener('click', () => this.fillNotes());
 
     document.addEventListener('keydown', this.onKey);
     this.render();
@@ -202,6 +206,18 @@ export class Board {
     } else this.commit(i, true);
   }
 
+  /**
+   * 빈칸마다 지금 놓을 수 있는 후보를 전부 메모로 (기존 메모는 덮어쓴다).
+   * 후보는 맞게 채워진 숫자만 보고 계산해서, 틀린 숫자가 남아 있어도 후보가 틀어지지 않는다.
+   */
+  fillNotes(): void {
+    if (this.locked || !this.autoNotes) return;
+    const known = this.grid.map((v, k) => (this.done(k) ? v : 0));
+    for (let i = 0; i < 81; i++) if (!this.grid[i]) this.notes[i] = candidates(known, i);
+    this.onInput?.('auto');
+    this.render();
+  }
+
   /** 개인판에서 정답 확정 */
   private commit(i: number, hint: boolean): void {
     const v = this.solution[i];
@@ -267,6 +283,7 @@ export class Board {
     else if (k === 'Backspace' || k === 'Delete' || k === '0') this.input(0);
     else if (k === 'n' || k === 'N' || k === 'ㅜ') this.toggleNotes();
     else if (k === 'h' || k === 'H' || k === 'ㅗ') this.useHint();
+    else if ((k === 'a' || k === 'A' || k === 'ㅁ') && this.autoNotes) this.fillNotes();
     else if (k.startsWith('Arrow')) {
       const i = this.sel < 0 ? 40 : this.sel;
       const r = Math.floor(i / 9);
