@@ -316,7 +316,11 @@ export class Board {
       if (v) el.innerHTML = `<span class="v${i === this.pop ? ' pop' : ''}">${v}</span>`;
       else if (this.notes[i]) {
         let h = '<div class="notes">';
-        for (let n = 1; n <= 9; n++) h += `<i>${this.notes[i] & (1 << (n - 1)) ? n : ''}</i>`;
+        for (let n = 1; n <= 9; n++) {
+          const on = this.notes[i] & (1 << (n - 1));
+          // 고른 칸의 숫자와 같은 메모 숫자도 같이 강조
+          h += `<i${on && n === sv ? ' class="same"' : ''}>${on ? n : ''}</i>`;
+        }
         el.innerHTML = h + '</div>';
       } else el.innerHTML = i === this.flash ? '<span class="v x">✕</span>' : '';
     }
