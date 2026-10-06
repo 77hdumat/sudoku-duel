@@ -587,7 +587,11 @@ function startSingle(level: Level, items: boolean): void {
       if (ai.done) {
         aiR.ms = h.elapsed();
         sfx.claimOther();
-        if (meR.ms == null) h.banner(`🏁 ${prof.name} 먼저 완주! 기록 ${fmt(finalMs(aiR)!)} — 끝까지 풀어 기록을 남겨요`);
+        if (meR.ms == null) {
+          h.banner(`🏁 ${prof.name} 먼저 완주! 기록 ${fmt(finalMs(aiR)!)} — 끝까지 풀어 기록을 남겨요`);
+          // 판 윗줄(메모)을 가리지 않게 잠깐만 띄운다 — 완주 표시는 순위 띠에 남는다
+          setTimeout(() => h.banner(''), 4000);
+        }
       }
       refresh();
     },

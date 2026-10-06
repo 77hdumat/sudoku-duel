@@ -8,12 +8,19 @@ export interface AiProfile {
   sec: number;
   /** 칸마다 틀린 숫자를 넣을 확률. 틀리면 잠시 뒤 알아채고 고친다 */
   mistake: number;
+  /**
+   * 막힘: 칸마다 STALL_P 확률로 평균 이만큼(초) 더 멈춘다.
+   * 사람처럼 술술 풀다 막히다를 반복 — 몰아칠 땐 콤보가 나오고, 전체 완주 시간은 판 난이도만큼 길어진다
+   */
+  stall: number;
 }
 
+const STALL_P = 0.3;
+
 export const AI_PROFILES: Record<Level, AiProfile> = {
-  easy: { name: '꼬마봇', avatar: 'assets/bot-easy.svg', blurb: '느긋하게 풀고 가끔 실수해요', sec: 9, mistake: 0.08 },
-  medium: { name: '스도봇', avatar: 'assets/bot-medium.svg', blurb: '꾸준한 속도의 모범생', sec: 6, mistake: 0.04 },
-  hard: { name: '마스터봇', avatar: 'assets/bot-hard.svg', blurb: '빠르고 거의 틀리지 않아요', sec: 4, mistake: 0.015 },
+  easy: { name: '꼬마봇', avatar: 'assets/bot-easy.svg', blurb: '느긋하게 풀고 가끔 실수해요', sec: 9, mistake: 0.08, stall: 12 },
+  medium: { name: '스도봇', avatar: 'assets/bot-medium.svg', blurb: '꾸준한 속도의 모범생', sec: 6, mistake: 0.04, stall: 26 },
+  hard: { name: '마스터봇', avatar: 'assets/bot-hard.svg', blurb: '몰아칠 땐 빠르고 거의 틀리지 않아요', sec: 4, mistake: 0.015, stall: 50 },
 };
 
 /**
@@ -79,6 +86,7 @@ export class AiSolver {
     }
     this.lastCell = best;
     const think = p.sec * (0.55 + 0.15 * bestCnt) * (0.75 + 0.5 * rand());
+    const stuck = rand() < STALL_P ? p.stall * (0.5 + rand()) : 0;
     if (rand() < p.mistake) {
       const sol = this.solution[best];
       this.grid[best] = ((sol + Math.floor(rand() * 8)) % 9) + 1;
@@ -89,6 +97,6 @@ export class AiSolver {
     }
     this.grid[best] = this.solution[best];
     this.filled++;
-    this.wait += think;
+    this.wait += think + stuck;
   }
 }

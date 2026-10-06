@@ -46,14 +46,14 @@ describe('Sudoku', () => {
 describe('AiSolver', () => {
   const { puzzle, solution } = generate('medium', mulberry32(7));
 
-  function finishTime(level: Level, seed: number): number {
-    const ai = new AiSolver(puzzle, solution, AI_PROFILES[level], mulberry32(seed));
+  function finishTime(level: Level, seed: number, p = puzzle, sol = solution): number {
+    const ai = new AiSolver(p, sol, AI_PROFILES[level], mulberry32(seed));
     let t = 0;
     while (!ai.done) {
       ai.update(0.5);
       t += 0.5;
     }
-    expect(ai.grid).toEqual(solution);
+    expect(ai.grid).toEqual(sol);
     expect(ai.wrongCell).toBe(-1);
     return t;
   }
@@ -62,10 +62,21 @@ describe('AiSolver', () => {
     finishTime('easy', 3);
   });
 
-  it('난이도가 높을수록 빠르다', () => {
-    const avg = (l: Level) => [1, 2, 3, 4, 5].reduce((s, k) => s + finishTime(l, k), 0) / 5;
+  it('높은 난이도일수록 몰아칠 때 손은 빠르다', () => {
+    expect(AI_PROFILES.easy.sec).toBeGreaterThan(AI_PROFILES.medium.sec);
+    expect(AI_PROFILES.medium.sec).toBeGreaterThan(AI_PROFILES.hard.sec);
+  });
+
+  it('자기 난이도 판에서는 높은 난이도일수록 완주가 오래 걸린다', () => {
+    const avg = (l: Level) =>
+      [1, 2, 3, 4, 5].reduce((s, k) => {
+        const g = generate(l, mulberry32(k));
+        return s + finishTime(l, k, g.puzzle, g.solution);
+      }, 0) / 5;
     const [e, m, h] = [avg('easy'), avg('medium'), avg('hard')];
-    expect(e).toBeGreaterThan(m);
-    expect(m).toBeGreaterThan(h);
+    expect(m).toBeGreaterThan(e);
+    expect(h).toBeGreaterThan(m);
+    // 고급도 사람이 붙어 볼 만한 시간 (예전엔 2분대에 끝나 의욕이 꺾였다)
+    expect(h).toBeGreaterThan(10 * 60);
   });
 });
