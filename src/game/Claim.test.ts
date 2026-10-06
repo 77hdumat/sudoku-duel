@@ -37,6 +37,14 @@ describe('ClaimJudge', () => {
     expect(j.scores.get(1)).toBe(3);
   });
 
+  it('방장이 고른 힌트 수만큼만 (0 이면 힌트 없음)', () => {
+    const none = new ClaimJudge(puzzle, solution, 0, 0);
+    expect(none.place(1, a, 0, true, 0)).toBeNull();
+    const one = new ClaimJudge(puzzle, solution, 0, 1);
+    expect(one.place(1, a, 0, true, 0)?.t).toBe('claim');
+    expect(one.place(1, b, 0, true, 0)).toBeNull();
+  });
+
   it('잘못된 칸 번호는 무시', () => {
     const j = new ClaimJudge(puzzle, solution, 2000);
     expect(j.place(1, 81, 1, false, 0)).toBeNull();

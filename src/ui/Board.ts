@@ -42,6 +42,8 @@ export class Board {
   /** 공유판: 방장에게 보낼 입력 */
   onPlace: ((i: number, v: number, hint: boolean) => void) | null = null;
   onInput: ((kind: 'select' | 'note' | 'blocked' | 'auto') => void) | null = null;
+  /** 다시 그릴 때마다 (관전자에게 판·메모를 보내는 용도) */
+  onRender: (() => void) | null = null;
 
   private cells: HTMLElement[] = [];
   /** 고른 칸 네 모서리에 붙는 꺾쇠 커서 (칸 사이를 미끄러져 다닌다) */
@@ -62,7 +64,9 @@ export class Board {
     private readonly shared = false,
     /** 고급 전용: 빈칸마다 지금 가능한 후보를 메모로 한 번에 채우는 버튼 */
     private readonly autoNotes = false,
+    hints = HINTS,
   ) {
+    this.hintsLeft = hints;
     this.grid = puzzle.slice();
     this.given = puzzle.map(Boolean);
 
@@ -170,14 +174,19 @@ export class Board {
       return;
     }
     if (v && v === this.solution[i]) return this.commit(i, false);
+    // 메모는 지우지 않는다 — 틀린 숫자를 지우면 원래 메모가 다시 보인다
     this.grid[i] = v;
-    this.notes[i] = 0;
     if (v) {
       this.mistakes++;
       this.onWrong?.(i);
     }
     this.render();
     this.onChange?.(this.filled, this.mistakes);
+  }
+
+  /** 관전자용 판 상태: grid 81 글자(0 = 빈칸), notes 칸마다 36진수 2 글자 */
+  snapshot(): { grid: string; notes: string } {
+    return { grid: this.grid.join(''), notes: this.notes.map((n) => n.toString(36).padStart(2, '0')).join('') };
   }
 
   /** 고른 칸(없거나 이미 맞은 칸이면 가장 쉬운 빈칸)의 정답을 연다 */
@@ -337,5 +346,6 @@ export class Board {
     this.placeCursor();
     this.hintBtn.querySelector('b')!.textContent = String(this.hintsLeft);
     this.hintBtn.disabled = this.hintsLeft <= 0;
+    this.onRender?.();
   }
 }

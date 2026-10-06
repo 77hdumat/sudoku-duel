@@ -7,7 +7,7 @@ import { fromStr, generate, HINTS, LEVELS, solve, toStr, type Grid, type Level }
 import { Fx } from './fx/Fx';
 import { sfx } from './fx/Sfx';
 import { Net, type NetError } from './net/Net';
-import { CHAT_MAX, cleanText, FREEZE_MS, isRace, MAX_PLAYERS, NAME_MAX, RULES, type Msg, type PlayerInfo, type ResultRow, type Rule } from './net/Protocol';
+import { CHAT_MAX, cleanText, FREEZE_MS, HINT_OPTIONS, isRace, MAX_PLAYERS, MAX_WATCHERS, NAME_MAX, RULES, type Msg, type PlayerInfo, type ResultRow, type Rule } from './net/Protocol';
 import { Board } from './ui/Board';
 
 const app = document.getElementById('app')!;
@@ -99,6 +99,7 @@ function menu(notice = ''): void {
     <form class="join" id="join">
       <input id="code" placeholder="방 코드 5자리" maxlength="5" autocomplete="off" />
       <button>참가</button>
+      <button type="button" class="ghost" id="watch">관전</button>
     </form>
     <div class="themes">${THEMES.map((t) => `<button data-theme-id="${t.id}" class="swatch ${t.id}">${t.label}</button>`).join('')}</div>
   </div></div>`);
@@ -109,13 +110,17 @@ function menu(notice = ''): void {
   };
   $('#single')!.onclick = () => (saveName(), singleSetup());
   $('#host')!.onclick = () => (saveName(), createRoom());
-  $('#join')!.onsubmit = (e) => {
-    e.preventDefault();
+  const join = (watch: boolean) => {
     const code = $<HTMLInputElement>('#code')!.value.trim().toUpperCase();
     if (code.length !== 5) return;
     saveName();
-    joinRoom(code);
+    joinRoom(code, watch);
   };
+  $('#join')!.onsubmit = (e) => {
+    e.preventDefault();
+    join(false);
+  };
+  $('#watch')!.onclick = () => join(true);
   app.querySelectorAll<HTMLButtonElement>('[data-theme-id]').forEach((b) => (b.onclick = () => setTheme(b.dataset.themeId!)));
   const r = new URLSearchParams(location.search).get('r');
   if (r) $<HTMLInputElement>('#code')!.value = r.toUpperCase();
@@ -276,6 +281,15 @@ const centerOf = (el: Element | null) => {
 
 // ───────────────────────── 공통 게임 화면 ─────────────────────────
 
+function overlay(html: string): HTMLElement {
+  $('.overlay')?.remove();
+  const d = document.createElement('div');
+  d.className = 'overlay';
+  d.innerHTML = `<div class="dialog">${html}</div>`;
+  $('.play')!.appendChild(d);
+  return d;
+}
+
 interface Play {
   board: Board;
   ended: boolean;
@@ -302,6 +316,7 @@ interface PlayOpts {
   onGiveUp?(): void;
   /** 아이템전: HUD 에 콤보 게이지 */
   meter?: ComboMeter;
+  hints?: number;
   onQuit(): void;
 }
 
@@ -323,7 +338,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     </main>
     ${o.chat ? '<aside class="chat-slot" id="chat-slot"></aside>' : ''}
   </div>`);
-  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, o.level === 'hard');
+  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, o.level === 'hard', o.hints);
   board.setColor(o.color);
   const timer = $('#timer')!;
   let t0 = 0;
@@ -340,14 +355,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
       timer.textContent = fmt(h.elapsed());
       $('#giveup')?.remove();
     },
-    overlay(html) {
-      $('.overlay')?.remove();
-      const d = document.createElement('div');
-      d.className = 'overlay';
-      d.innerHTML = `<div class="dialog">${html}</div>`;
-      $('.play')!.appendChild(d);
-      return d;
-    },
+    overlay,
     banner(html) {
       const b = $('#banner');
       if (!b) return;
@@ -431,6 +439,12 @@ interface Racer extends Entry {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+const LEVEL_DESC: Record<Level, string> = {
+  easy: `처음부터 채워진 숫자 ${LEVELS.easy.clues}개 안팎.`,
+  medium: `처음부터 채워진 숫자 ${LEVELS.medium.clues}개 안팎.`,
+  hard: `처음부터 채워진 숫자 ${LEVELS.hard.clues}개 안팎 + ✨ 자동 메모 버튼.`,
+};
+
 /** 완주 기록 옆 벌점 설명: " · 3:12 + 실수 2 (+20초)" */
 const penaltyNote = (e: Entry) => (e.ms != null && e.mistakes ? ` · ${fmt(e.ms)} + 실수 ${e.mistakes} (+${(e.mistakes * MISTAKE_PENALTY_MS) / 1000}초)` : '');
 
@@ -469,15 +483,18 @@ function renderStandings(el: HTMLElement | null, racers: Racer[], claim: boolean
 }
 
 /** 결과 창: 내 등수 제목 + 최종 순위표 */
-function resultDialog(h: Play, racers: Racer[], claim: boolean, total: number, buttons: string): HTMLElement {
+function resultDialog(h: Pick<Play, 'overlay'>, racers: Racer[], claim: boolean, total: number, buttons: string): HTMLElement {
   const sorted = claim ? rankScore(racers) : rankRace(racers);
   const pl = places(sorted, claim);
-  const myPlace = pl[sorted.findIndex((e) => e.me)] ?? 0;
+  const me = sorted.findIndex((e) => e.me);
+  const myPlace = pl[me] ?? 0;
   const top = sorted.filter((_, i) => pl[i] === 1);
-  const title = myPlace === 1 ? (top.length > 1 ? '공동 1위!' : '1위!') : `${myPlace}위`;
-  celebrate(myPlace === 1);
+  // 관전자는 내 등수가 없다
+  const title = me < 0 ? '최종 순위' : myPlace === 1 ? (top.length > 1 ? '공동 1위!' : '1위!') : `${myPlace}위`;
+  if (me < 0) fx.confetti(70);
+  else celebrate(myPlace === 1);
   const d = h.overlay(`
-    <img class="result-img${myPlace === 1 ? '' : ' dim'}" src="assets/trophy.svg" alt="" />
+    <img class="result-img${myPlace === 1 || me < 0 ? '' : ' dim'}" src="assets/trophy.svg" alt="" />
     <h2>${title}</h2>
     <p class="hint">${claim ? '점수 순위 (맞힌 칸 − 실수)' : `기록 순위 (완주 시간 + 실수당 ${MISTAKE_PENALTY_MS / 1000}초)`}</p>
     <div class="standings final" id="final"></div>
@@ -662,9 +679,18 @@ function startSingle(level: Level, items: boolean): void {
 interface Room {
   host: boolean;
   myId: number;
+  /** 내가 관전자로 들어왔는지 */
+  watching: boolean;
   players: PlayerInfo[];
+  watchers: PlayerInfo[];
   level: Level;
   rule: Rule;
+  /** 판당 힌트 수 (방장이 고른다) */
+  hints: number;
+  /** 지금 판 (게임 중에 들어온 관전자에게 보낼 용도) */
+  puzzle: string;
+  /** 플레이어별 최신 판 상태 — 방장(중계·스냅샷용)과 관전자만 쓴다 */
+  views: Map<number, { grid: string; notes: string }>;
   phase: 'lobby' | 'play';
   total: number;
   /** 레이스형 진행률·완주 시간·포기 */
@@ -681,6 +707,8 @@ interface Room {
   /** 점령형 심판 — 방장만 */
   judge: ClaimJudge | null;
   play: Play | null;
+  /** 관전 화면 */
+  watch: Watch | null;
   result: ResultRow[] | null;
   chat: HTMLElement;
 }
@@ -694,7 +722,7 @@ function leaveRoom(): void {
   room = null;
 }
 
-function newRoom(host: boolean): Room {
+function newRoom(host: boolean, watching = false): Room {
   const chat = document.createElement('div');
   chat.className = 'chat';
   chat.innerHTML = `<div class="chat-head">채팅</div><div class="chat-log"></div>
@@ -714,9 +742,14 @@ function newRoom(host: boolean): Room {
   return {
     host,
     myId: 0,
+    watching,
     players: [],
+    watchers: [],
     level: 'medium',
     rule: 'claim',
+    hints: HINTS,
+    puzzle: '',
+    views: new Map(),
     phase: 'lobby',
     total: 0,
     progress: new Map(),
@@ -728,6 +761,7 @@ function newRoom(host: boolean): Room {
     cells: new Map(),
     judge: null,
     play: null,
+    watch: null,
     result: null,
     chat,
   };
@@ -766,6 +800,7 @@ function netErrorText(e: NetError): string {
 }
 
 const nameOf = (id: number) => room?.players.find((p) => p.id === id)?.name ?? '???';
+const isWatcher = (id: number) => !!room?.watchers.some((w) => w.id === id);
 
 // ── 호스트
 
@@ -781,6 +816,12 @@ function createRoom(): void {
   };
   n.onError = (e) => net === n && menu(netErrorText(e));
   n.onLeave = (id) => {
+    const w = r.watchers.find((x) => x.id === id);
+    if (w) {
+      r.watchers = r.watchers.filter((x) => x !== w);
+      addChat(`👀 ${w.name} 님이 관전을 그만뒀어요.`);
+      return broadcastLobby();
+    }
     const p = r.players.find((x) => x.id === id);
     if (!p) return;
     r.players = r.players.filter((x) => x !== p);
@@ -792,22 +833,42 @@ function createRoom(): void {
     else if (isRace(r.rule)) checkRaceEnd();
   };
   n.onMessage = (m, from) => {
+    // 관전자는 채팅만 할 수 있다
+    if (isWatcher(from) && m.t !== 'chat') return;
     switch (m.t) {
       case 'hello': {
-        if (r.phase !== 'lobby') {
-          n.sendTo(from, { t: 'full', why: 'playing' });
+        if (r.players.some((x) => x.id === from)) return;
+        const name = cleanText(m.name, NAME_MAX) || `손님${from}`;
+        if (m.watch) {
+          if (r.watchers.length >= MAX_WATCHERS) {
+            n.sendTo(from, { t: 'full', why: 'watchers' });
+            return n.kick(from);
+          }
+          r.watchers.push({ id: from, name });
+          addChat(`👀 ${name} 님이 관전하러 왔어요.`);
+          sfx.join();
+          broadcastLobby();
+          if (r.phase === 'play') sendWatch(from);
+          return;
+        }
+        if (r.phase !== 'lobby' || r.players.length >= MAX_PLAYERS) {
+          n.sendTo(from, { t: 'full', why: r.phase !== 'lobby' ? 'playing' : 'slots' });
           n.kick(from);
           return;
         }
-        const p = { id: from, name: cleanText(m.name, NAME_MAX) || `손님${from}` };
-        r.players.push(p);
-        addChat(`${p.name} 님이 들어왔어요.`);
+        r.players.push({ id: from, name });
+        addChat(`${name} 님이 들어왔어요.`);
         sfx.join();
         broadcastLobby();
         return;
       }
+      case 'view': {
+        if (r.phase !== 'play' || !r.players.some((x) => x.id === from)) return;
+        if (!/^[0-9]{81}$/.test(String(m.grid)) || !/^[0-9a-z]{162}$/.test(String(m.notes))) return;
+        return relayView({ t: 'view', id: from, grid: m.grid, notes: m.notes });
+      }
       case 'chat': {
-        const p = r.players.find((x) => x.id === from);
+        const p = r.players.find((x) => x.id === from) ?? r.watchers.find((x) => x.id === from);
         const text = cleanText(m.text, CHAT_MAX);
         if (!p || !text) return;
         const out: Msg = { t: 'chat', id: from, name: p.name, text };
@@ -833,23 +894,39 @@ function createRoom(): void {
         return hostPlace(from, Number(m.cell), Number(m.v), !!m.hint);
     }
   };
-  // 방장 포함 최대 MAX_PLAYERS 명
-  void n.host(MAX_PLAYERS - 1);
+  // 방장 포함 플레이어 최대 MAX_PLAYERS 명 + 관전자 MAX_WATCHERS 명 (나눠 세는 건 hello 에서)
+  void n.host(MAX_PLAYERS - 1 + MAX_WATCHERS);
 }
 
 function broadcastLobby(): void {
   if (!room || !net) return;
-  net.broadcast({ t: 'lobby', players: room.players, level: room.level, rule: room.rule });
+  net.broadcast({ t: 'lobby', players: room.players, watchers: room.watchers, level: room.level, rule: room.rule, hints: room.hints });
   refreshPlayers();
 }
 
 function hostStart(): void {
   if (!room || !net) return;
   const { puzzle, solution } = generate(room.level);
-  const m: Msg = { t: 'start', puzzle: toStr(puzzle), level: room.level, rule: room.rule };
+  const m: Msg = { t: 'start', puzzle: toStr(puzzle), level: room.level, rule: room.rule, hints: room.hints };
   net.broadcast(m);
-  startMulti(m.puzzle, m.level, m.rule);
-  room.judge = room.rule === 'claim' ? new ClaimJudge(puzzle, solution, FREEZE_MS) : null;
+  startMulti(m.puzzle, m.level, m.rule, m.hints);
+  room.judge = room.rule === 'claim' ? new ClaimJudge(puzzle, solution, FREEZE_MS, room.hints) : null;
+}
+
+/** 판 상태를 기억해 두고 관전자에게만 보낸다 (플레이어끼리는 서로의 메모를 못 본다) */
+function relayView(m: { t: 'view'; id: number; grid: string; notes: string }): void {
+  if (!room) return;
+  room.views.set(m.id, { grid: m.grid, notes: m.notes });
+  for (const w of room.watchers) net?.sendTo(w.id, m);
+}
+
+/** 게임 중에 들어온 관전자에게 지금 판·기록·각자의 판 상태를 */
+function sendWatch(id: number): void {
+  const r = room;
+  if (!r || !net) return;
+  net.sendTo(id, { t: 'watch', puzzle: r.puzzle, level: r.level, rule: r.rule, hints: r.hints, ms: r.play?.elapsed() ?? 0, rows: currentRows() });
+  for (const [pid, v] of r.views) net.sendTo(id, { t: 'view', id: pid, ...v });
+  if (r.result) net.sendTo(id, { t: 'result', rows: r.result });
 }
 
 /** 점령형 판정 — 방장 자신의 입력도 여기로 */
@@ -901,12 +978,11 @@ function checkRaceEnd(): void {
   if (r && r.players.every((p) => r.finishes.has(p.id) || r.gaveUp.has(p.id))) endGame();
 }
 
-/** 지금 기록으로 최종 결과를 확정해 모두에게 */
-function endGame(): void {
-  const r = room;
-  if (!r || r.result || r.phase !== 'play') return;
+/** 지금 기록 (최종 결과·관전자 스냅샷) */
+function currentRows(): ResultRow[] {
+  const r = room!;
   const claim = r.rule === 'claim';
-  const rows: ResultRow[] = r.players.map((p) => ({
+  return r.players.map((p) => ({
     id: p.id,
     filled: claim ? (r.cells.get(p.id) ?? 0) : (r.progress.get(p.id)?.filled ?? 0),
     ms: claim ? null : (r.finishes.get(p.id) ?? null),
@@ -914,6 +990,13 @@ function endGame(): void {
     gaveUp: r.gaveUp.has(p.id) || undefined,
     mistakes: claim ? (r.misses.get(p.id) ?? 0) : (r.progress.get(p.id)?.mistakes ?? 0),
   }));
+}
+
+/** 지금 기록으로 최종 결과를 확정해 모두에게 */
+function endGame(): void {
+  const r = room;
+  if (!r || r.result || r.phase !== 'play') return;
+  const rows = currentRows();
   const m: Msg = { t: 'result', rows };
   net?.broadcast(m);
   onResult(rows);
@@ -921,9 +1004,9 @@ function endGame(): void {
 
 // ── 게스트
 
-function joinRoom(code: string): void {
+function joinRoom(code: string, watch = false): void {
   leaveRoom();
-  const r = (room = newRoom(false));
+  const r = (room = newRoom(false, watch));
   const n = (net = new Net());
   waiting(`${code} 방에 접속하는 중…`);
   n.onError = (e) => net === n && menu(netErrorText(e));
@@ -931,24 +1014,36 @@ function joinRoom(code: string): void {
     switch (m.t) {
       case 'welcome':
         r.myId = m.id;
-        n.send({ t: 'hello', name: myName });
+        n.send({ t: 'hello', name: myName, watch });
         return;
       case 'full':
-        return menu(m.why === 'playing' ? '이미 게임이 진행 중인 방이에요.' : `방이 가득 찼어요 (최대 ${MAX_PLAYERS}명).`);
+        return menu(
+          m.why === 'playing'
+            ? '이미 게임이 진행 중인 방이에요. 관전으로는 들어갈 수 있어요.'
+            : m.why === 'watchers'
+              ? `관전석이 가득 찼어요 (최대 ${MAX_WATCHERS}명).`
+              : `방이 가득 찼어요 (최대 ${MAX_PLAYERS}명).`,
+        );
       case 'lobby': {
         const first = !r.players.length;
-        if (!first && m.players.length > r.players.length) sfx.join();
+        if (!first && m.players.length + m.watchers.length > r.players.length + r.watchers.length) sfx.join();
         r.players = m.players;
+        r.watchers = m.watchers ?? [];
         r.level = m.level;
         r.rule = m.rule;
+        r.hints = m.hints ?? HINTS;
         if (first) {
-          addChat(`${code} 방에 들어왔어요.`);
+          addChat(`${code} 방에 ${watch ? '관전하러 ' : ''}들어왔어요.`);
           lobby();
         } else refreshPlayers();
         return;
       }
       case 'start':
-        return startMulti(m.puzzle, m.level, m.rule);
+        return watch ? startWatch(m.puzzle, m.level, m.rule, m.hints, -3000) : startMulti(m.puzzle, m.level, m.rule, m.hints);
+      case 'watch':
+        return startWatch(m.puzzle, m.level, m.rule, m.hints, m.ms, m.rows);
+      case 'view':
+        return applyView(m);
       case 'progress':
         return applyProgress(m);
       case 'finished':
@@ -979,6 +1074,7 @@ function lobby(): void {
   r.phase = 'lobby';
   r.result = null;
   r.play = null;
+  r.watch = null;
   r.judge = null;
   show(`
   <div class="screen lobby">
@@ -987,12 +1083,16 @@ function lobby(): void {
       <div class="code-box"><small>방 코드</small><b id="code">${esc(net.code)}</b><button class="ghost" id="copy">복사</button></div>
       <h3>참가자 <span id="count"></span></h3>
       <ul class="players" id="players"></ul>
+      <div id="watchers"></div>
       <h3>규칙</h3>
       <div class="levels" id="rules">${RULE_KEYS.map((k) => `<button data-rule="${k}" ${r.host ? '' : 'disabled'}>${RULES[k].label}</button>`).join('')}</div>
       <p class="hint" id="rule-desc"></p>
       <h3>난이도</h3>
       <div class="levels" id="levels">${LEVEL_KEYS.map((l) => `<button data-level="${l}" ${r.host ? '' : 'disabled'}>${LEVELS[l].label}</button>`).join('')}</div>
-      ${r.host ? '<button class="primary" id="start">시작하기</button><p class="hint" id="start-hint"></p>' : `<p class="hint">방장이 시작하면 같은 퍼즐이 동시에 열려요. 힌트는 각자 ${HINTS}번!</p>`}
+      <p class="hint" id="level-desc"></p>
+      <h3>힌트</h3>
+      <div class="levels" id="hints">${HINT_OPTIONS.map((n) => `<button data-hints="${n}" ${r.host ? '' : 'disabled'}>${n ? `${n}번` : '없음'}</button>`).join('')}</div>
+      ${r.host ? '<button class="primary" id="start">시작하기</button><p class="hint" id="start-hint"></p>' : `<p class="hint">${r.watching ? '관전 중이에요. 방장이 시작하면 모든 플레이어의 판과 메모를 볼 수 있어요.' : '방장이 시작하면 같은 퍼즐이 동시에 열려요.'}</p>`}
     </section>
     <aside class="chat-slot" id="chat-slot"></aside>
   </div>`);
@@ -1011,6 +1111,13 @@ function lobby(): void {
       (b) =>
         (b.onclick = () => {
           r.rule = b.dataset.rule as Rule;
+          broadcastLobby();
+        }),
+    );
+    app.querySelectorAll<HTMLButtonElement>('[data-hints]').forEach(
+      (b) =>
+        (b.onclick = () => {
+          r.hints = Number(b.dataset.hints);
           broadcastLobby();
         }),
     );
@@ -1048,6 +1155,13 @@ function refreshPlayers(): void {
       .map((p) => `<li>${avatar(p)}<span>${esc(p.name)}</span>${p.id === 0 ? '<em>방장</em>' : ''}${p.id === r.myId ? '<em class="me">나</em>' : ''}</li>`)
       .join('');
     $('#count')!.textContent = `${r.players.length} / ${MAX_PLAYERS}`;
+    $('#watchers')!.innerHTML = r.watchers.length
+      ? `<h3>관전 <span>${r.watchers.length} / ${MAX_WATCHERS}</span></h3><ul class="players">${r.watchers
+          .map((p) => `<li>${avatar(p)}<span>${esc(p.name)}</span>${p.id === r.myId ? '<em class="me">나</em>' : ''}</li>`)
+          .join('')}</ul>`
+      : '';
+    app.querySelectorAll<HTMLButtonElement>('#hints [data-hints]').forEach((b) => b.classList.toggle('on', Number(b.dataset.hints) === r.hints));
+    $('#level-desc')!.textContent = LEVEL_DESC[r.level];
     app.querySelectorAll<HTMLButtonElement>('#levels [data-level]').forEach((b) => b.classList.toggle('on', b.dataset.level === r.level));
     app.querySelectorAll<HTMLButtonElement>('#rules [data-rule]').forEach((b) => b.classList.toggle('on', b.dataset.rule === r.rule));
     $('#rule-desc')!.textContent = RULES[r.rule].desc;
@@ -1060,7 +1174,8 @@ function refreshPlayers(): void {
   if (!$('#stand') || r.phase !== 'play') return;
   renderStandings($('#stand'), racers(), r.rule === 'claim', r.total);
   if (r.rule === 'claim') {
-    const left = r.play ? r.play.board.grid.filter((v) => !v).length : 0;
+    let left = r.total;
+    for (const n of r.cells.values()) left -= n;
     $('#left')!.textContent = `남은 칸 ${left}`;
   }
   // 레이스: 누군가 완주하면 방장은 남은 사람을 기다리지 않고 끝낼 수 있다
@@ -1087,14 +1202,15 @@ const spitted = new Map<number, number>();
  */
 function applySpit(m: { from: number; to: number[]; say: number[] }): void {
   const r = room;
-  if (!r?.play || r.phase !== 'play' || r.result || !Array.isArray(m.to)) return;
-  const spot = (id: number) => centerOf(id === r.myId ? $('#board') : $(`[data-pv="${id}"]`) ?? $(`.stand[data-key="${id}"]`));
+  if (!r || r.phase !== 'play' || r.result || !Array.isArray(m.to)) return;
+  // 관전 화면이면 그 사람의 큰 판(data-w)으로
+  const spot = (id: number) => centerOf(id === r.myId ? $('#board') : ($(`[data-w="${id}"]`) ?? $(`[data-pv="${id}"]`) ?? $(`.stand[data-key="${id}"]`)));
   const says = m.to.map((_, k) => SPIT_REACTIONS[m.say?.[k]] ?? SPIT_REACTIONS[0]);
   addChat(`💦 ${nameOf(m.from)}의 침 공격! ${m.to.map((id, k) => `${nameOf(id)} '${says[k]}'`).join(' · ')}`);
   sfx.whoosh();
   m.to.forEach((to, k) => {
     fx.projectile(spot(m.from), spot(to), SPIT_COLOR, () => {
-      if (!room?.play || room.result) return;
+      if (room?.phase !== 'play' || room.result) return;
       if (to === r.myId) {
         sfx.spit();
         spitOn($('.board-wrap'), true, says[k]);
@@ -1103,6 +1219,7 @@ function applySpit(m: { from: number; to: number[]; say: number[] }): void {
         const until = spitUntil(performance.now(), spitted.get(to) ?? 0);
         spitted.set(to, until);
         spitOn($(`[data-pv="${to}"]`), false, '', until);
+        spitOn($(`[data-w="${to}"]`), false, '', until);
         bubble($(`.stand[data-key="${to}"]`), says[k], colorOf(to));
       }
     });
@@ -1139,12 +1256,19 @@ function applyGaveUp(m: { id: number }): void {
 
 function applyClaimEvent(ev: ClaimEvent): void {
   const r = room;
-  const board = r?.play?.board;
-  if (!r || !board || r.phase !== 'play') return;
-  const mine = ev.id === r.myId;
+  if (!r || r.phase !== 'play') return;
   if (ev.t === 'claim') {
     r.scores.set(ev.id, (r.scores.get(ev.id) ?? 0) + 1);
     r.cells.set(ev.id, (r.cells.get(ev.id) ?? 0) + 1);
+  } else {
+    r.scores.set(ev.id, (r.scores.get(ev.id) ?? 0) - 1);
+    r.misses.set(ev.id, (r.misses.get(ev.id) ?? 0) + 1);
+  }
+  // 관전자는 보드가 없다 — 점수만 센다
+  const board = r.play?.board;
+  if (!board) return refreshPlayers();
+  const mine = ev.id === r.myId;
+  if (ev.t === 'claim') {
     const units = board.claim(ev.cell, ev.id, colorOf(ev.id), ev.hint);
     if (mine) {
       combo = ev.hint ? combo : combo + 1;
@@ -1152,28 +1276,30 @@ function applyClaimEvent(ev: ClaimEvent): void {
       else sfx.correct(combo - 1);
     } else sfx.claimOther();
     cellFx(board, ev.cell, colorOf(ev.id), mine, units, mine ? (ev.hint ? '💡+1' : '+1') : undefined);
-  } else {
-    r.scores.set(ev.id, (r.scores.get(ev.id) ?? 0) - 1);
-    r.misses.set(ev.id, (r.misses.get(ev.id) ?? 0) + 1);
-    if (mine) {
-      board.miss(ev.cell, FREEZE_MS);
-      wrongFx(board, ev.cell);
-      const { x, y } = board.cellCenter(ev.cell);
-      fx.text(x, y - 24, '-1', '#e05252');
-    }
+  } else if (mine) {
+    board.miss(ev.cell, FREEZE_MS);
+    wrongFx(board, ev.cell);
+    const { x, y } = board.cellCenter(ev.cell);
+    fx.text(x, y - 24, '-1', '#e05252');
   }
   refreshPlayers();
 }
 
-function startMulti(puzzleStr: string, level: Level, rule: Rule): void {
-  if (!room || !net) return;
-  const r = room;
+/** 새 판의 방 상태를 초기화. 받은 퍼즐이 잘못됐으면 null */
+function beginRound(puzzleStr: string, level: Level, rule: Rule, hints: number): { puzzle: Grid; solution: Grid } | null {
+  const r = room!;
   const puzzle = fromStr(puzzleStr);
   const solution = solve(puzzle);
-  if (!solution) return menu('받은 퍼즐이 올바르지 않아요.');
+  if (!solution) {
+    menu('받은 퍼즐이 올바르지 않아요.');
+    return null;
+  }
   r.phase = 'play';
   r.level = level;
   r.rule = rule;
+  r.hints = Number(hints) || 0;
+  r.puzzle = puzzleStr;
+  r.views = new Map();
   r.result = null;
   r.total = puzzle.filter((v) => !v).length;
   const blank = puzzle.map((v) => (v ? 'g' : '0')).join('');
@@ -1185,10 +1311,20 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule): void {
   spitted.clear();
   r.scores = new Map(r.players.map((p) => [p.id, 0]));
   r.cells = new Map(r.players.map((p) => [p.id, 0]));
+  return { puzzle, solution };
+}
+
+function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number): void {
+  if (!room || !net) return;
+  const r = room;
+  const round = beginRound(puzzleStr, level, rule, hints);
+  if (!round) return;
+  const { puzzle, solution } = round;
   const claim = rule === 'claim';
   const meter = rule === 'item' ? new ComboMeter() : undefined;
   r.play = play(puzzle, solution, {
     level,
+    hints: r.hints,
     color: colorOf(r.myId),
     tag: RULES[rule].label,
     chat: true,
@@ -1231,22 +1367,108 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule): void {
       if (r.host) hostAttack(0);
       else net?.send({ t: 'attack' });
     });
+  // 판·메모가 바뀔 때마다 관전자에게 (방장이 중계)
+  let sent = '';
+  board.onRender = () => {
+    const v = board.snapshot();
+    if (v.grid + v.notes === sent) return;
+    sent = v.grid + v.notes;
+    const m: Msg = { t: 'view', id: r.myId, ...v };
+    if (r.host) relayView(m);
+    else net?.send(m);
+  };
+  board.onRender();
   const endNow = $('#end-now');
   if (endNow) endNow.onclick = () => endGame();
   $('#chat-slot')!.appendChild(r.chat);
-  addChat(`${LEVELS[level].label} · ${RULES[rule].label} 시작!`);
+  addChat(`${LEVELS[level].label} · ${RULES[rule].label} · ${r.hints ? `힌트 ${r.hints}번` : '힌트 없음'} 시작!`);
   refreshPlayers();
 }
 
-function onResult(rows: ResultRow[]): void {
-  if (!room?.play || room.result) return;
+// ── 관전
+
+interface Watch {
+  end(): void;
+  overlay(html: string): HTMLElement;
+  banner(html: string): void;
+  /** 플레이어 한 명의 판을 다시 그린다 */
+  paint(id: number): void;
+}
+
+/** 관전 화면: 플레이어마다 판과 메모를 그대로 (ms = 시작 후 지난 시간, 카운트다운 중이면 음수) */
+function startWatch(puzzleStr: string, level: Level, rule: Rule, hints: number, ms: number, rows?: ResultRow[]): void {
+  if (!room || !net) return;
   const r = room;
-  const pl = room.play;
-  r.result = rows;
-  pl.end();
-  pl.banner('');
+  const round = beginRound(puzzleStr, level, rule, hints);
+  if (!round) return;
+  const { puzzle, solution } = round;
+  if (rows) applyRows(rows);
+  const claim = rule === 'claim';
+  const cells = Array.from({ length: 81 }, (_, i) => `<div class="cell" data-r="${Math.floor(i / 9)}" data-c="${i % 9}"></div>`).join('');
+  show(`
+  <div class="screen play watching">
+    <aside class="side"><h3>${claim ? '실시간 점수' : '실시간 순위'}</h3><div class="standings" id="stand"></div>${claim ? '<p class="hint"><span id="left"></span></p>' : ''}</aside>
+    <main class="center">
+      <div class="hud">
+        <span class="chip">${LEVELS[level].label}</span><span class="chip accent">${RULES[rule].label}</span>
+        <span class="timer" id="timer">0:00</span>
+        <span class="chip">👀 관전</span>
+        <button class="ghost" id="quit">나가기</button>
+      </div>
+      <div class="watch-grid">${r.players
+        .map((p) => `<div class="watch-card" style="--own:${colorOf(p.id)}"><div class="watch-name">${avatar(p)}<b>${esc(p.name)}</b></div><div class="board" data-w="${p.id}">${cells}</div></div>`)
+        .join('')}</div>
+    </main>
+    <aside class="chat-slot" id="chat-slot"></aside>
+  </div>`);
+  $('#quit')!.onclick = () => menu();
+  $('#chat-slot')!.appendChild(r.chat);
+
+  const t0 = performance.now() - ms;
+  let ended = false;
+  const timer = $('#timer')!;
+  const tick = setInterval(() => !ended && (timer.textContent = fmt(Math.max(0, performance.now() - t0))), 250);
+  cleanup = () => clearInterval(tick);
+
+  const w: Watch = {
+    end: () => (ended = true),
+    overlay,
+    banner: () => {},
+    paint(id) {
+      const el = $(`[data-w="${id}"]`);
+      if (!el) return;
+      const v = r.views.get(id);
+      const grid = v ? fromStr(v.grid) : puzzle;
+      [...el.children].forEach((c, i) => {
+        const n = v ? parseInt(v.notes.slice(i * 2, i * 2 + 2), 36) : 0;
+        const val = grid[i];
+        c.className = 'cell' + (puzzle[i] ? ' given' : val ? ' user' : '') + (val && val !== solution[i] ? ' wrong' : '');
+        if (val) c.innerHTML = `<span class="v">${val}</span>`;
+        else if (n) {
+          let h = '<div class="notes">';
+          for (let k = 1; k <= 9; k++) h += `<i>${n & (1 << (k - 1)) ? k : ''}</i>`;
+          c.innerHTML = h + '</div>';
+        } else c.innerHTML = '';
+      });
+    },
+  };
+  r.watch = w;
+  for (const p of r.players) w.paint(p.id);
+  addChat(`👀 ${LEVELS[level].label} · ${RULES[rule].label} 관전 중`);
+  refreshPlayers();
+}
+
+function applyView(m: { id: number; grid: string; notes: string }): void {
+  const r = room;
+  if (!r?.watch || r.phase !== 'play' || !/^[0-9]{81}$/.test(String(m.grid)) || !/^[0-9a-z]{162}$/.test(String(m.notes))) return;
+  r.views.set(m.id, { grid: m.grid, notes: m.notes });
+  r.watch.paint(m.id);
+}
+
+/** 받은 기록으로 순위표를 맞춘다 */
+function applyRows(rows: ResultRow[]): void {
+  const r = room!;
   const claim = r.rule === 'claim';
-  // 받은 최종 기록으로 순위표를 맞춘다 (중간에 놓친 메시지가 있어도 결과는 같게)
   for (const row of rows) {
     if (claim) {
       r.scores.set(row.id, row.score ?? 0);
@@ -1258,6 +1480,18 @@ function onResult(rows: ResultRow[]): void {
       if (row.gaveUp) r.gaveUp.add(row.id);
     }
   }
+}
+
+function onResult(rows: ResultRow[]): void {
+  const pl = room?.play ?? room?.watch;
+  if (!room || !pl || room.result) return;
+  const r = room;
+  r.result = rows;
+  pl.end();
+  pl.banner('');
+  const claim = r.rule === 'claim';
+  // 받은 최종 기록으로 순위표를 맞춘다 (중간에 놓친 메시지가 있어도 결과는 같게)
+  applyRows(rows);
   refreshPlayers();
   const final = racers();
   const winners = (claim ? rankScore(final) : rankRace(final)).slice(0, 1);

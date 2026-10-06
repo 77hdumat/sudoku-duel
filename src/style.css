@@ -1631,3 +1631,41 @@ textarea {
   user-select: text;
   -webkit-touch-callout: default;
 }
+
+/* ── 관전: 플레이어마다 판과 메모 */
+.watching .center {
+  flex: 1;
+  min-width: 0;
+  max-width: 1100px;
+}
+.watch-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+  gap: 16px;
+}
+.watch-card {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.watch-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.watch-name b {
+  color: var(--own);
+}
+.watch-card .board {
+  --size: 100cqw;
+  position: relative;
+}
+.watch-card .cell {
+  cursor: default;
+}
+/* 큰 판이 따로 있으니 순위표 미리보기는 뺀다 */
+.watching .stand .pv {
+  display: none;
+}

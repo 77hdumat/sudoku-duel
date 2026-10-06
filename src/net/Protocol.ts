@@ -21,20 +21,28 @@ export const RULES: Record<Rule, { label: string; desc: string }> = {
 };
 
 export const MAX_PLAYERS = 5;
+export const MAX_WATCHERS = 5;
+/** 방장이 고를 수 있는 판당 힌트 수 */
+export const HINT_OPTIONS = [0, 1, 3, 5];
 export const FREEZE_MS = 2000;
 
 /**
  * 호스트 중계 스타형. id 0 = 호스트, 게스트는 접속 순서대로 1..
  * 게스트가 보낸 id·name 은 믿지 않고 호스트가 연결 슬롯 기준으로 덮어쓴다.
  * 점령형 판정(정답·오답·힌트 횟수·정지)은 전부 호스트가 하고 claim/miss 로 알린다.
+ * 관전자(watchers)도 게스트 연결이지만 players 에 들지 않고, 게임 메시지는 받기만 한다.
  */
 export type Msg =
   | { t: 'hb'; t0: number }
   | { t: 'welcome'; id: number }
-  | { t: 'full'; why: 'slots' | 'playing' }
-  | { t: 'hello'; name: string }
-  | { t: 'lobby'; players: PlayerInfo[]; level: Level; rule: Rule }
-  | { t: 'start'; puzzle: string; level: Level; rule: Rule }
+  | { t: 'full'; why: 'slots' | 'playing' | 'watchers' }
+  | { t: 'hello'; name: string; watch?: boolean }
+  | { t: 'lobby'; players: PlayerInfo[]; watchers: PlayerInfo[]; level: Level; rule: Rule; hints: number }
+  | { t: 'start'; puzzle: string; level: Level; rule: Rule; hints: number }
+  /** 게임 중에 들어온 관전자에게: 지금 판과 기록 (ms = 시작 후 지난 시간) */
+  | { t: 'watch'; puzzle: string; level: Level; rule: Rule; hints: number; ms: number; rows: ResultRow[] }
+  /** 플레이어 → 방장 → 관전자: 판 상태 (Board.snapshot) */
+  | { t: 'view'; id: number; grid: string; notes: string }
   /** cells: 미리보기용 81 글자 (g 주어진 칸, 1 맞게 채운 칸, 0 빈칸) */
   | { t: 'progress'; id: number; filled: number; mistakes: number; cells?: string }
   /** 레이스형: 게스트 → 방장 완주 보고 / 포기 */

@@ -16,6 +16,7 @@ export class ClaimJudge {
     puzzle: Grid,
     private readonly solution: Grid,
     private readonly freezeMs: number,
+    private readonly hints = HINTS,
   ) {
     this.grid = puzzle.slice();
   }
@@ -28,7 +29,7 @@ export class ClaimJudge {
     if (!Number.isInteger(cell) || cell < 0 || cell > 80) return null;
     if (hint) {
       const used = this.hintsUsed.get(id) ?? 0;
-      if (used >= HINTS) return null;
+      if (used >= this.hints) return null;
       // 힌트를 누르는 사이 다른 사람이 가져갔으면 가장 쉬운 빈칸으로 대신 연다
       if (this.grid[cell]) cell = this.easiest();
       if (cell < 0) return null;
