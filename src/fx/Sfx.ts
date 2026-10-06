@@ -7,12 +7,6 @@ type Wave = OscillatorType;
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
-let muted = false;
-try {
-  muted = localStorage.getItem('muted') === '1';
-} catch {
-  /* 기본값 유지 */
-}
 
 function ac(): AudioContext | null {
   if (!ctx) {
@@ -32,7 +26,7 @@ function ac(): AudioContext | null {
 /** 음 하나: 짧은 어택 + 지수 감쇠 */
 function tone(freq: number, at: number, dur: number, wave: Wave = 'triangle', vol = 0.5, slideTo?: number): void {
   const a = ac();
-  if (!a || !master || muted) return;
+  if (!a || !master) return;
   const t0 = a.currentTime + at;
   const o = a.createOscillator();
   const g = a.createGain();
@@ -52,7 +46,7 @@ let noiseBuf: AudioBuffer | null = null;
 /** 짧은 잡음 (침 뱉는 소리 '퉤') — 대역통과로 음색을 잡는다 */
 function noise(at: number, dur: number, freq: number, q: number, vol: number): void {
   const a = ac();
-  if (!a || !master || muted) return;
+  if (!a || !master) return;
   if (!noiseBuf) {
     noiseBuf = a.createBuffer(1, a.sampleRate * 0.5, a.sampleRate);
     const d = noiseBuf.getChannelData(0);
@@ -80,17 +74,6 @@ const st = (base: number, n: number) => base * 2 ** (n / 12);
 const C5 = 523.25;
 
 export const sfx = {
-  get muted(): boolean {
-    return muted;
-  },
-  setMuted(m: boolean): void {
-    muted = m;
-    try {
-      localStorage.setItem('muted', m ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  },
   /** 첫 클릭 때 오디오를 깨워 둔다 */
   unlock(): void {
     ac();

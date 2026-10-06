@@ -93,20 +93,6 @@ body {
 #fx-top {
   z-index: 30;
 }
-#mute {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  z-index: 40;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--panel);
-  border: 1.5px solid var(--line);
-  font-size: 18px;
-  box-shadow: var(--shadow);
-}
 .bob {
   animation: bob 2.6s ease-in-out infinite;
 }
@@ -457,7 +443,9 @@ input:focus {
   width: var(--size);
   height: var(--size);
   display: grid;
-  grid-template-columns: repeat(9, 1fr);
+  /* 행·열을 모두 고정 — 자동 행이면 칸 내용(숫자·메모)에 따라 행 높이가 흔들려 마지막 행이 눌리고 굵은 선이 튄다 */
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-rows: repeat(9, minmax(0, 1fr));
   background: var(--panel);
   border: 3px solid var(--thick);
   border-radius: 14px;
@@ -484,6 +472,9 @@ input:focus {
   font-family: Nunito, sans-serif;
   font-weight: 800;
   font-size: calc(var(--size) / 15);
+  line-height: 1;
+  min-width: 0;
+  min-height: 0;
   cursor: pointer;
   transition: background 0.12s;
 }
@@ -1340,11 +1331,11 @@ button,
     justify-content: flex-start;
   }
   .play {
-    --size: min(calc(100vw - 32px), 56dvh, 560px);
+    /* 300px ≈ 순위 띠 + HUD + 숫자패드 + 도구 — 작은 폰에서도 도구 줄까지 한 화면에 */
+    --size: min(calc(100vw - 32px), calc(100dvh - 300px), 560px);
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    padding-top: max(56px, env(safe-area-inset-top));
   }
   .center {
     order: 1;

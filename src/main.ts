@@ -64,17 +64,6 @@ document.addEventListener('click', (e) => {
   if (b && !b.classList.contains('digit') && !b.classList.contains('tool')) sfx.click();
 });
 
-const muteBtn = document.createElement('button');
-muteBtn.id = 'mute';
-muteBtn.title = '효과음 켜기/끄기';
-const paintMute = () => (muteBtn.textContent = sfx.muted ? '🔇' : '🔊');
-muteBtn.onclick = () => {
-  sfx.setMuted(!sfx.muted);
-  paintMute();
-};
-paintMute();
-document.body.appendChild(muteBtn);
-
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const fmt = (ms: number) => {
   const s = Math.floor(ms / 1000);
