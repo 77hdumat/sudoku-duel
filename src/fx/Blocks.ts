@@ -167,7 +167,8 @@ export class UiBlocks {
     const s = 1 + b.hover * 0.03 + b.pop;
     b.group.scale.set(s, s, 1);
 
-    const dim = el.disabled ? 0.45 : 1;
+    // 다 쓴 숫자 버튼은 흐리게 하지 않고 숫자만 뺀 흰 블럭으로 (style.css .digit:disabled)
+    const dim = el.disabled && !el.classList.contains('digit') ? 0.45 : 1;
     b.mat.transparent = b.faceMat.transparent = true;
     b.mat.opacity = dim;
     b.faceMat.opacity = dim;
