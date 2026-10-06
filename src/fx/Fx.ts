@@ -15,9 +15,9 @@ const PALETTES: Record<string, number[]> = {
   matcha: [0x90be6d, 0xb5e48c, 0xf9c74f, 0xf4a6a6, 0x76c893, 0xa3c4f3, 0xffe5b4],
 };
 
-const reduceMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const reduceMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** 폰·태블릿(터치 위주·좁은 화면)은 배경 오브젝트를 줄여 배터리·발열을 아낀다 */
-const light = typeof matchMedia !== 'undefined' && (matchMedia('(pointer: coarse)').matches || innerWidth < 700);
+export const light = typeof matchMedia !== 'undefined' && (matchMedia('(pointer: coarse)').matches || innerWidth < 700);
 
 interface Particle {
   x: number;

@@ -51,6 +51,9 @@ export class Board {
   private digitBtns: HTMLButtonElement[] = [];
   private noteBtn!: HTMLButtonElement;
   private hintBtn!: HTMLButtonElement;
+  private undoBtn!: HTMLButtonElement;
+  /** 되돌리기: 바꾸기 전 숫자·메모. 맞힌 칸은 되돌리지 않는다 */
+  private history: { grid: Grid; notes: number[] }[] = [];
   private ownerColor = new Map<number, string>();
   private pop = -1;
   private flash = -1;
@@ -100,6 +103,7 @@ export class Board {
     tools.className = 'tools';
     tools.innerHTML =
       `<button class="tool" data-k="note">✎ 메모 <kbd>N</kbd></button>` +
+      `<button class="tool" data-k="undo">↶ 되돌리기 <kbd>Z</kbd></button>` +
       (shared ? '' : `<button class="tool" data-k="erase">⌫ 지우기</button>`) +
       `<button class="tool hint" data-k="hint">💡 힌트 <b></b> <kbd>H</kbd></button>` +
       (autoNotes ? `<button class="tool" data-k="auto">✨ 자동 메모 <kbd>A</kbd></button>` : '');
@@ -107,6 +111,8 @@ export class Board {
     this.noteBtn = tools.querySelector('[data-k="note"]')!;
     this.noteBtn.addEventListener('click', () => this.toggleNotes());
     tools.querySelector('[data-k="erase"]')?.addEventListener('click', () => this.input(0));
+    this.undoBtn = tools.querySelector('[data-k="undo"]')!;
+    this.undoBtn.addEventListener('click', () => this.undo());
     this.hintBtn = tools.querySelector('[data-k="hint"]')!;
     this.hintBtn.addEventListener('click', () => this.useHint());
     tools.querySelector('[data-k="auto"]')?.addEventListener('click', () => this.fillNotes());
@@ -164,7 +170,10 @@ export class Board {
     if (this.locked || i < 0 || this.given[i] || this.done(i)) return;
     if (this.frozen) return void this.onInput?.('blocked');
     if (this.noteMode && v) {
-      if (!this.grid[i]) this.notes[i] ^= 1 << (v - 1);
+      if (!this.grid[i]) {
+        this.save();
+        this.notes[i] ^= 1 << (v - 1);
+      }
       this.onInput?.('note');
       this.render();
       return;
@@ -174,6 +183,8 @@ export class Board {
       return;
     }
     if (v && v === this.solution[i]) return this.commit(i, false);
+    if (this.grid[i] === v) return;
+    this.save();
     // 메모는 지우지 않는다 — 틀린 숫자를 지우면 원래 메모가 다시 보인다
     this.grid[i] = v;
     if (v) {
@@ -222,9 +233,29 @@ export class Board {
   fillNotes(): void {
     if (this.locked || !this.autoNotes) return;
     const known = this.grid.map((v, k) => (this.done(k) ? v : 0));
+    this.save();
     for (let i = 0; i < 81; i++) if (!this.grid[i]) this.notes[i] = candidates(known, i);
     this.onInput?.('auto');
     this.render();
+  }
+
+  private save(): void {
+    this.history.push({ grid: this.grid.slice(), notes: this.notes.slice() });
+    if (this.history.length > 200) this.history.shift();
+  }
+
+  /** 마지막 메모·숫자 입력을 되돌린다 (그 사이 맞힌 칸은 그대로, 실수 수도 그대로) */
+  undo(): void {
+    if (this.locked || this.frozen || !this.history.length) return void this.onInput?.('blocked');
+    const h = this.history.pop()!;
+    for (let i = 0; i < 81; i++) {
+      if (this.done(i)) continue;
+      this.grid[i] = h.grid[i];
+      this.notes[i] = h.notes[i];
+    }
+    this.onInput?.('note');
+    this.render();
+    this.onChange?.(this.filled, this.mistakes);
   }
 
   /** 개인판에서 정답 확정 */
@@ -292,6 +323,7 @@ export class Board {
     else if (k === 'Backspace' || k === 'Delete' || k === '0') this.input(0);
     else if (k === 'n' || k === 'N' || k === 'ㅜ') this.toggleNotes();
     else if (k === 'h' || k === 'H' || k === 'ㅗ') this.useHint();
+    else if (k === 'z' || k === 'Z' || k === 'ㅋ') this.undo();
     else if ((k === 'a' || k === 'A' || k === 'ㅁ') && this.autoNotes) this.fillNotes();
     else if (k.startsWith('Arrow')) {
       const i = this.sel < 0 ? 40 : this.sel;
@@ -346,6 +378,7 @@ export class Board {
     this.placeCursor();
     this.hintBtn.querySelector('b')!.textContent = String(this.hintsLeft);
     this.hintBtn.disabled = this.hintsLeft <= 0;
+    this.undoBtn.disabled = !this.history.length;
     this.onRender?.();
   }
 }

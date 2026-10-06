@@ -1090,13 +1090,26 @@ input {
   flex-direction: column;
   gap: 3px;
 }
+.stand .who .top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
 .stand .who b {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .stand .who small {
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stand .who small:empty {
+  display: none;
 }
 .stand .bar {
   height: 6px;
@@ -1105,8 +1118,9 @@ input {
   background: var(--own);
 }
 .stand strong {
+  flex-shrink: 0;
   font-family: Nunito, sans-serif;
-  font-size: 22px;
+  font-size: 20px;
   color: var(--own);
 }
 .stand.done strong {
@@ -1269,6 +1283,7 @@ input {
   padding: 2px;
   border-radius: 6px;
   background: var(--soft);
+  box-shadow: 0 0 0 2px var(--own);
 }
 .pv i {
   aspect-ratio: 1;
@@ -1384,7 +1399,13 @@ button,
     padding: 6px 8px 6px 4px;
     gap: 6px;
   }
+  /* 이름·상태·막대는 빼고 기록만 */
   .side .stand .who {
+    flex: 1;
+  }
+  .side .stand .who b,
+  .side .stand .who small,
+  .side .stand .bar {
     display: none;
   }
   .side .stand strong {
@@ -1672,7 +1693,19 @@ textarea {
 .watch-card .cell {
   cursor: default;
 }
-/* 큰 판이 따로 있으니 순위표 미리보기는 뺀다 */
-.watching .stand .pv {
+/* 3D 침 (src/fx/Goo.ts): SVG 침 위에 깔고, 글자(퉤!·리액션)는 그 위 */
+.splat .goo3d {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.splat.gl .shine,
+.splat.gl .bubbles,
+.splat.gl .drip {
   display: none;
+}
+.splat b,
+.splat em {
+  z-index: 1;
 }

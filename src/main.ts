@@ -5,6 +5,7 @@ import { ATTACK_COMBO, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUnt
 import { finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './game/Ranking';
 import { fromStr, generate, HINTS, LEVELS, solve, toStr, type Grid, type Level } from './game/Sudoku';
 import { Fx } from './fx/Fx';
+import { goo, type Goo } from './fx/Goo';
 import { sfx } from './fx/Sfx';
 import { Net, type NetError } from './net/Net';
 import { CHAT_MAX, cleanText, FREEZE_MS, HINT_OPTIONS, isRace, MAX_PLAYERS, MAX_WATCHERS, NAME_MAX, RULES, type Msg, type PlayerInfo, type ResultRow, type Rule } from './net/Protocol';
@@ -38,7 +39,7 @@ const store = {
 
 const fx = new Fx();
 // 개발 중 콘솔·자동 테스트에서 이펙트 상태를 들여다보기 위한 것 (배포 빌드에는 빠진다)
-if (import.meta.env.DEV) Object.assign(window, { __fx: fx });
+if (import.meta.env.DEV) Object.assign(window, { __fx: fx, __spit: () => spitOn($('.board-wrap'), true, '으악!') });
 let myName = store.get('name', '플레이어');
 setTheme(store.get('theme', 'paper'));
 
@@ -222,7 +223,7 @@ function splatSvg(): string {
 }
 
 /** 요소별 지금 덮여 있는 침과 걷힐 시각 */
-const splats = new WeakMap<Element, { d: HTMLElement; until: number; timer: ReturnType<typeof setTimeout> }>();
+const splats = new WeakMap<Element, { d: HTMLElement; until: number; timer: ReturnType<typeof setTimeout>; g: Goo | null }>();
 
 /**
  * el(보드·미리보기) 위에 침을 덮는다. 이미 덮여 있으면 새로 겹치지 않고 걷히는 시각만 뒤로 민다.
@@ -235,8 +236,11 @@ function spitOn(el: Element | null, big: boolean, say = '', until?: number): voi
   const live = cur && cur.d.isConnected && !cur.d.classList.contains('off');
   const end = until ?? spitUntil(now, live ? cur!.until : 0);
   let d: HTMLElement;
+  let g: Goo | null = null;
   if (live) {
     d = cur!.d;
+    g = cur!.g;
+    g?.again();
     clearTimeout(cur!.timer);
     // 또 맞았다 — 자국을 한 번 더 출렁이게
     d.classList.remove('again');
@@ -247,14 +251,17 @@ function spitOn(el: Element | null, big: boolean, say = '', until?: number): voi
     d.className = `splat${big ? ' big' : ''}`;
     d.innerHTML = splatSvg() + (big ? '<b>퉤!</b><em></em>' : '');
     el.appendChild(d);
+    // 판만 한 침은 3D 로 (순위표 미리보기처럼 작은 건 SVG 만)
+    if (el.getBoundingClientRect().width >= 120) g = goo(d);
   }
   const em = d.querySelector('em');
   if (em && say) em.textContent = say;
   const timer = setTimeout(() => {
     d.classList.add('off');
+    g?.off();
     setTimeout(() => d.remove(), 400);
   }, end - now);
-  splats.set(el, { d, until: end, timer });
+  splats.set(el, { d, until: end, timer, g });
 }
 
 /** 화면 고정 말풍선 (맞은 상대의 리액션) */
@@ -317,6 +324,8 @@ interface PlayOpts {
   /** 아이템전: HUD 에 콤보 게이지 */
   meter?: ComboMeter;
   hints?: number;
+  /** 자동 메모 버튼 — 없으면 고급만 */
+  autoNotes?: boolean;
   onQuit(): void;
 }
 
@@ -338,7 +347,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     </main>
     ${o.chat ? '<aside class="chat-slot" id="chat-slot"></aside>' : ''}
   </div>`);
-  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, o.level === 'hard', o.hints);
+  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, o.autoNotes ?? o.level === 'hard', o.hints);
   board.setColor(o.color);
   const timer = $('#timer')!;
   let t0 = 0;
@@ -442,7 +451,7 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 const LEVEL_DESC: Record<Level, string> = {
   easy: `처음부터 채워진 숫자 ${LEVELS.easy.clues}개 안팎.`,
   medium: `처음부터 채워진 숫자 ${LEVELS.medium.clues}개 안팎.`,
-  hard: `처음부터 채워진 숫자 ${LEVELS.hard.clues}개 안팎 + ✨ 자동 메모 버튼.`,
+  hard: `처음부터 채워진 숫자 ${LEVELS.hard.clues}개 안팎.`,
 };
 
 /** 완주 기록 옆 벌점 설명: " · 3:12 + 실수 2 (+20초)" */
@@ -457,20 +466,21 @@ function renderStandings(el: HTMLElement | null, racers: Racer[], claim: boolean
   el.innerHTML = sorted
     .map((e, i) => {
       const value = claim ? `${e.score ?? 0}` : e.ms != null ? fmt(finalMs(e)!) : `${e.filled}/${total}`;
+      // 진행률은 막대가 보여 주니 글자로는 실수·완주·포기만
       const sub = claim
         ? `${e.filled}칸`
         : e.ms != null
           ? `${e.projected ? '끝까지 풀면 (예상)' : '🏁 완주'}${penaltyNote(e)}`
           : e.gaveUp
             ? '포기'
-            : `${Math.round((e.filled / total) * 100)}%`;
-      const miss = e.mistakes && e.ms == null ? ` · 실수 ${e.mistakes}` : '';
-      const pv = e.cells && !e.me ? `<div class="pv" data-pv="${e.id}">${[...e.cells].map((c) => `<i class="${c === 'g' ? 'g' : c === '1' ? 'f' : ''}"></i>`).join('')}</div>` : '';
+            : '';
+      const miss = e.mistakes && e.ms == null ? `${sub ? ' · ' : ''}실수 ${e.mistakes}` : '';
+      // 판 미리보기가 있으면 아바타 자리에 (테두리가 플레이어 색)
+      const pv = e.cells ? `<div class="pv" data-pv="${e.id}">${[...e.cells].map((c) => `<i class="${c === 'g' ? 'g' : c === '1' ? 'f' : ''}"></i>`).join('')}</div>` : '';
       const pct = claim ? 0 : e.ms != null ? 100 : (e.filled / total) * 100;
       return `<div class="stand${e.me ? ' me' : ''}${e.ms != null ? ' done' : ''}${e.gaveUp ? ' out' : ''}" data-key="${e.id}" style="--own:${e.color}">
-        <span class="place">${MEDALS[pl[i] - 1] ?? pl[i]}</span>${e.avatar}
-        <div class="who"><b>${esc(e.name)}</b><small>${sub}${miss}</small>${claim ? '' : `<div class="bar"><i style="width:${pct}%"></i></div>`}</div>
-        ${pv}<strong>${value}</strong>
+        <span class="place">${MEDALS[pl[i] - 1] ?? pl[i]}</span>${pv || e.avatar}
+        <div class="who"><div class="top"><b>${esc(e.name)}</b><strong>${value}</strong></div><small>${sub}${miss}</small>${claim ? '' : `<div class="bar"><i style="width:${pct}%"></i></div>`}</div>
       </div>`;
     })
     .join('');
@@ -687,6 +697,8 @@ interface Room {
   rule: Rule;
   /** 판당 힌트 수 (방장이 고른다) */
   hints: number;
+  /** 자동 메모 허용 (방장이 고른다, 난이도와 상관없이) */
+  auto: boolean;
   /** 지금 판 (게임 중에 들어온 관전자에게 보낼 용도) */
   puzzle: string;
   /** 플레이어별 최신 판 상태 — 방장(중계·스냅샷용)과 관전자만 쓴다 */
@@ -748,6 +760,7 @@ function newRoom(host: boolean, watching = false): Room {
     level: 'medium',
     rule: 'claim',
     hints: HINTS,
+    auto: true,
     puzzle: '',
     views: new Map(),
     phase: 'lobby',
@@ -900,16 +913,16 @@ function createRoom(): void {
 
 function broadcastLobby(): void {
   if (!room || !net) return;
-  net.broadcast({ t: 'lobby', players: room.players, watchers: room.watchers, level: room.level, rule: room.rule, hints: room.hints });
+  net.broadcast({ t: 'lobby', players: room.players, watchers: room.watchers, level: room.level, rule: room.rule, hints: room.hints, auto: room.auto });
   refreshPlayers();
 }
 
 function hostStart(): void {
   if (!room || !net) return;
   const { puzzle, solution } = generate(room.level);
-  const m: Msg = { t: 'start', puzzle: toStr(puzzle), level: room.level, rule: room.rule, hints: room.hints };
+  const m: Msg = { t: 'start', puzzle: toStr(puzzle), level: room.level, rule: room.rule, hints: room.hints, auto: room.auto };
   net.broadcast(m);
-  startMulti(m.puzzle, m.level, m.rule, m.hints);
+  startMulti(m.puzzle, m.level, m.rule, m.hints, m.auto);
   room.judge = room.rule === 'claim' ? new ClaimJudge(puzzle, solution, FREEZE_MS, room.hints) : null;
 }
 
@@ -924,7 +937,7 @@ function relayView(m: { t: 'view'; id: number; grid: string; notes: string }): v
 function sendWatch(id: number): void {
   const r = room;
   if (!r || !net) return;
-  net.sendTo(id, { t: 'watch', puzzle: r.puzzle, level: r.level, rule: r.rule, hints: r.hints, ms: r.play?.elapsed() ?? 0, rows: currentRows() });
+  net.sendTo(id, { t: 'watch', puzzle: r.puzzle, level: r.level, rule: r.rule, hints: r.hints, auto: r.auto, ms: r.play?.elapsed() ?? 0, rows: currentRows() });
   for (const [pid, v] of r.views) net.sendTo(id, { t: 'view', id: pid, ...v });
   if (r.result) net.sendTo(id, { t: 'result', rows: r.result });
 }
@@ -1032,6 +1045,7 @@ function joinRoom(code: string, watch = false): void {
         r.level = m.level;
         r.rule = m.rule;
         r.hints = m.hints ?? HINTS;
+        r.auto = m.auto ?? true;
         if (first) {
           addChat(`${code} 방에 ${watch ? '관전하러 ' : ''}들어왔어요.`);
           lobby();
@@ -1039,7 +1053,7 @@ function joinRoom(code: string, watch = false): void {
         return;
       }
       case 'start':
-        return watch ? startWatch(m.puzzle, m.level, m.rule, m.hints, -3000) : startMulti(m.puzzle, m.level, m.rule, m.hints);
+        return watch ? startWatch(m.puzzle, m.level, m.rule, m.hints, -3000) : startMulti(m.puzzle, m.level, m.rule, m.hints, m.auto);
       case 'watch':
         return startWatch(m.puzzle, m.level, m.rule, m.hints, m.ms, m.rows);
       case 'view':
@@ -1092,6 +1106,8 @@ function lobby(): void {
       <p class="hint" id="level-desc"></p>
       <h3>힌트</h3>
       <div class="levels" id="hints">${HINT_OPTIONS.map((n) => `<button data-hints="${n}" ${r.host ? '' : 'disabled'}>${n ? `${n}번` : '없음'}</button>`).join('')}</div>
+      <h3>✨ 자동 메모</h3>
+      <div class="levels" id="auto">${[true, false].map((on) => `<button data-auto="${on ? 1 : 0}" ${r.host ? '' : 'disabled'}>${on ? '허용' : '금지'}</button>`).join('')}</div>
       ${r.host ? '<button class="primary" id="start">시작하기</button><p class="hint" id="start-hint"></p>' : `<p class="hint">${r.watching ? '관전 중이에요. 방장이 시작하면 모든 플레이어의 판과 메모를 볼 수 있어요.' : '방장이 시작하면 같은 퍼즐이 동시에 열려요.'}</p>`}
     </section>
     <aside class="chat-slot" id="chat-slot"></aside>
@@ -1118,6 +1134,13 @@ function lobby(): void {
       (b) =>
         (b.onclick = () => {
           r.hints = Number(b.dataset.hints);
+          broadcastLobby();
+        }),
+    );
+    app.querySelectorAll<HTMLButtonElement>('[data-auto]').forEach(
+      (b) =>
+        (b.onclick = () => {
+          r.auto = b.dataset.auto === '1';
           broadcastLobby();
         }),
     );
@@ -1161,6 +1184,7 @@ function refreshPlayers(): void {
           .join('')}</ul>`
       : '';
     app.querySelectorAll<HTMLButtonElement>('#hints [data-hints]').forEach((b) => b.classList.toggle('on', Number(b.dataset.hints) === r.hints));
+    app.querySelectorAll<HTMLButtonElement>('#auto [data-auto]').forEach((b) => b.classList.toggle('on', (b.dataset.auto === '1') === r.auto));
     $('#level-desc')!.textContent = LEVEL_DESC[r.level];
     app.querySelectorAll<HTMLButtonElement>('#levels [data-level]').forEach((b) => b.classList.toggle('on', b.dataset.level === r.level));
     app.querySelectorAll<HTMLButtonElement>('#rules [data-rule]').forEach((b) => b.classList.toggle('on', b.dataset.rule === r.rule));
@@ -1314,9 +1338,10 @@ function beginRound(puzzleStr: string, level: Level, rule: Rule, hints: number):
   return { puzzle, solution };
 }
 
-function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number): void {
+function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number, auto: boolean): void {
   if (!room || !net) return;
   const r = room;
+  r.auto = auto !== false;
   const round = beginRound(puzzleStr, level, rule, hints);
   if (!round) return;
   const { puzzle, solution } = round;
@@ -1325,6 +1350,7 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number):
   r.play = play(puzzle, solution, {
     level,
     hints: r.hints,
+    autoNotes: r.auto,
     color: colorOf(r.myId),
     tag: RULES[rule].label,
     chat: true,
@@ -1381,7 +1407,7 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number):
   const endNow = $('#end-now');
   if (endNow) endNow.onclick = () => endGame();
   $('#chat-slot')!.appendChild(r.chat);
-  addChat(`${LEVELS[level].label} · ${RULES[rule].label} · ${r.hints ? `힌트 ${r.hints}번` : '힌트 없음'} 시작!`);
+  addChat(`${LEVELS[level].label} · ${RULES[rule].label} · ${r.hints ? `힌트 ${r.hints}번` : '힌트 없음'}${r.auto ? '' : ' · 자동 메모 금지'} 시작!`);
   refreshPlayers();
 }
 
