@@ -15,7 +15,8 @@ export const LEVELS: Record<Level, { label: string; clues: number; tier: Tier }>
   hard: { label: '고급', clues: 26, tier: 2 },
   hell: { label: '지옥', clues: 22, tier: 3 },
   // 지옥·변성대왕 clues 는 사실상 '바닥까지' — 대칭을 지키며 깎으면 보통 25~30개에서 더 못 지운다
-  king: { label: '변성대왕', clues: 20, tier: 4 },
+  // tier 4(AIC 한두 번이면 풀리는 판)는 어느 난이도에도 안 쓴다 — 변성대왕으로는 쉽고 지옥으로는 어렵다
+  king: { label: '변성대왕', clues: 20, tier: 5 },
 };
 
 /** 한 판에 플레이어마다 쓸 수 있는 힌트 수 */

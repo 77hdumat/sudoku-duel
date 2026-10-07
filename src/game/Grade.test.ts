@@ -21,7 +21,7 @@ function carve(target: number, rand: () => number): { puzzle: Grid; solution: Gr
 describe('logicSolve', () => {
   it('기술은 정답 숫자를 놓치거나 지우지 않는다', () => {
     const seen = new Set<number>();
-    for (let k = 0; k < 120; k++) {
+    for (let k = 0; k < 200; k++) {
       const { puzzle, solution } = carve(24, mulberry32(k));
       const r = logicSolve(puzzle);
       seen.add(r.tier);
@@ -29,7 +29,7 @@ describe('logicSolve', () => {
       r.cands.forEach((m, i) => r.grid[i] || expect(m & (1 << (solution[i] - 1))).toBeTruthy());
     }
     // 모든 단계가 실제로 한 번씩은 쓰였는지 (기술 하나가 통째로 안 돌아도 잡히게)
-    expect([...seen].sort()).toEqual([0, 1, 2, 3, 4]);
+    expect([...seen].sort()).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
   it('완성판은 0단계', () => {

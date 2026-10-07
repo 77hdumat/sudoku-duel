@@ -6,11 +6,12 @@ import { candidates, type Grid } from './Sudoku';
  * 1 초급: 교차로 · 드러난/숨겨진 부분집합 (2~4)
  * 2 초급 물고기 + 중급 윙: X-윙 · 황새치 · 해파리 · XY-윙 · XYZ-윙
  * 3 중급 사슬: W-윙 · 핀드/사시미 X-윙 · X-사슬(스카이스크레이퍼·2-String Kite·심플 컬러링 포함) · XY-사슬
- *   — Sudoku.com 극악(Extreme)이 요구하는 패턴이 여기까지
- * 4 그 이상: 위 기술로는 막힘 — ALS · 3D 메두사 · 교대 추론 사슬 같은 고급/초고급 기술이 있어야 풀린다
+ *   + 유일성 논법 (UR 1형 · BUG+1) — Sudoku.com 극악(Extreme)이 요구하는 패턴이 여기까지
+ * 4 고급: 교대 추론 사슬(AIC)이 필요하다. 보통 한두 번 쓰고 나면 다시 쉬워진다
+ * 5 그 이상: AIC 로도 막힘 — ALS · 포싱 체인 같은 초고급 기술이 있어야 풀린다
  * 쉬운 단계로 진전이 있으면 늘 그쪽을 먼저 쓴다 (사람도 쉬운 것부터 찾으니까).
  */
-export type Tier = 0 | 1 | 2 | 3 | 4;
+export type Tier = 0 | 1 | 2 | 3 | 4 | 5;
 
 /** 행 9 (0~8) · 열 9 (9~17) · 박스 9 (18~26) */
 const UNITS: number[][] = Array.from({ length: 27 }, (_, u) => {
@@ -254,7 +255,57 @@ function xyChains(s: State): boolean {
   return false;
 }
 
-/** 기술로 풀 수 있는 데까지 푼 판·남은 후보와 필요했던 단계 (4면 grid 에 빈칸이 남는다) */
+/**
+ * 유일성 논법 (해가 하나뿐이라는 전제):
+ * UR 1형 — 두 행·두 열·두 박스에 걸친 직사각형 네 칸 중 세 칸이 똑같이 {a,b} 뿐이면, 넷째 칸은 a·b 가 될 수 없다.
+ * BUG+1 — 후보 3개인 칸 하나 빼고 전부 후보 2개면, 그 칸에서 행에 3번 나오는 숫자가 답이다.
+ */
+function uniqueness(s: State): boolean {
+  const boxOf = (i: number) => Math.floor(i / 27) * 3 + Math.floor((i % 9) / 3);
+  for (const [r1, r2] of combos([...Array(9).keys()], 2))
+    for (const [c1, c2] of combos([...Array(9).keys()], 2)) {
+      const cells = [r1 * 9 + c1, r1 * 9 + c2, r2 * 9 + c1, r2 * 9 + c2];
+      if (new Set(cells.map(boxOf)).size !== 2 || cells.some((i) => !s.c[i])) continue;
+      const pairs = cells.filter((i) => count(s.c[i]) === 2);
+      if (pairs.length !== 3 || pairs.some((i) => s.c[i] !== s.c[pairs[0]])) continue;
+      const odd = cells.find((i) => !pairs.includes(i))!;
+      if ((s.c[odd] & s.c[pairs[0]]) === s.c[pairs[0]] && s.drop([odd], s.c[pairs[0]])) return true;
+    }
+  const open = [...Array(81).keys()].filter((i) => s.c[i]);
+  const triple = open.filter((i) => count(s.c[i]) !== 2);
+  if (triple.length === 1 && count(s.c[triple[0]]) === 3) {
+    const t = triple[0];
+    const row = UNITS[Math.floor(t / 9)];
+    const b = bits(s.c[t]).find((bit) => row.filter((i) => s.c[i] & bit).length === 3);
+    if (b) {
+      s.place(t, 32 - Math.clz32(b));
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 교대 추론 사슬(AIC): 강한 링크 = 유닛 켤레 + 칸 안 후보 2개, 약한 링크 = 같은 숫자 서로 보는 칸 + 같은 칸 다른 후보 */
+function aic(s: State): boolean {
+  const partner = new Map<number, number[]>();
+  for (const bit of bits(0x1ff))
+    for (const u of UNITS) {
+      const ends = u.filter((i) => s.c[i] & bit);
+      if (ends.length === 2) ends.forEach((i, k) => partner.set(i * 512 + bit, [...(partner.get(i * 512 + bit) ?? []), ends[1 - k]]));
+    }
+  const strong = ([i, b]: Node): Node[] => [
+    ...(partner.get(i * 512 + b) ?? []).map((j): Node => [j, b]),
+    ...(count(s.c[i]) === 2 ? [[i, s.c[i] & ~b] as Node] : []),
+  ];
+  const weak = ([i, b]: Node): Node[] => [
+    ...PEERS[i].filter((j) => s.c[j] & b).map((j): Node => [j, b]),
+    ...bits(s.c[i] & ~b).map((o): Node => [i, o]),
+  ];
+  for (let i = 0; i < 81; i++) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak)) return true;
+  return false;
+}
+
+/** 기술로 풀 수 있는 데까지 푼 판·남은 후보와 필요했던 단계 (5면 grid 에 빈칸이 남는다) */
 export function logicSolve(p: Grid): { tier: Tier; grid: Grid; cands: number[] } {
   const s = new State(p);
   let tier: Tier = 0;
@@ -262,8 +313,9 @@ export function logicSolve(p: Grid): { tier: Tier; grid: Grid; cands: number[] }
     if (singles(s)) continue;
     if (intersections(s) || subsets(s)) tier = Math.max(tier, 1) as Tier;
     else if (fish(s) || wings(s)) tier = Math.max(tier, 2) as Tier;
-    else if (wWing(s) || finnedXWing(s) || xChains(s) || xyChains(s)) tier = 3;
-    else return { tier: 4, grid: s.g, cands: s.c };
+    else if (wWing(s) || finnedXWing(s) || xChains(s) || xyChains(s) || uniqueness(s)) tier = Math.max(tier, 3) as Tier;
+    else if (aic(s)) tier = 4;
+    else return { tier: 5, grid: s.g, cands: s.c };
   }
   return { tier, grid: s.g, cands: s.c };
 }
