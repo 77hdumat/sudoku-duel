@@ -1868,6 +1868,12 @@ textarea {
   fill: var(--panel);
   opacity: 0.55;
 }
+.ex-pencil text {
+  fill: var(--muted);
+  font-size: 20px;
+  font-weight: 700;
+  opacity: 0.75;
+}
 .ex-area {
   fill: var(--accent);
   opacity: 0.12;
@@ -2051,11 +2057,13 @@ textarea {
 }
 .ex-text {
   margin: 0;
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.6;
   word-break: keep-all;
   overflow-wrap: anywhere;
-  /* 버튼은 three.js 블록이라 스크롤 영역 밖에 둔다 — 글만 넘치면 스크롤 */
+}
+/* 버튼은 three.js 블록이라 스크롤 영역 밖에 둔다 — 글·카드만 넘치면 스크롤 */
+.ex-scroll {
   max-height: 22vh;
   overflow-y: auto;
 }
@@ -2101,17 +2109,6 @@ textarea {
   color: #e5303f;
   font-weight: 800;
 }
-.ex-btns {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-.ex-btns button {
-  min-width: 0;
-  padding: 8px 6px;
-  white-space: nowrap;
-}
 @media (max-width: 520px) {
   .explain {
     padding: 10px 12px;
@@ -2120,7 +2117,228 @@ textarea {
     font-size: 14px;
   }
   .ex-text {
-    font-size: 13px;
-    max-height: 26vh;
+    font-size: 14px;
   }
+  .ex-scroll {
+    max-height: 20vh;
+  }
+
+}
+
+/* 풀이: 앞 서술에서 이미 본 그림은 애니메이션 없이 */
+.ex-svg .still .ex-cell,
+.ex-svg .still .ex-mark,
+.ex-svg .still .ex-link,
+.ex-svg .still .ex-elim,
+.ex-svg .still .ex-place,
+.ex-svg .still .ex-assume,
+.ex-svg .still .ex-trail,
+.ex-svg .still .ex-bad,
+.ex-svg .still .ex-ghost,
+.ex-svg .still .ex-block {
+  animation: none;
+  opacity: 1;
+  stroke-dashoffset: 0;
+}
+.ex-ghost {
+  font-size: 50px;
+  opacity: 0;
+  animation: ex-in 0.3s ease-out forwards;
+}
+.ex-ghost.on {
+  fill: #2fb36d;
+}
+.ex-ghost.off {
+  fill: #ff8a3d;
+}
+.ex-block {
+  stroke: #e5303f;
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0;
+  animation: ex-in 0.3s ease-out forwards;
+}
+.ex-head .ex-tier {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: #7cc48a;
+}
+.ex-head .ex-tier.t1 {
+  background: #5b9bd5;
+}
+.ex-head .ex-tier.t2 {
+  background: #e58a2e;
+}
+.ex-head .ex-tier.t3 {
+  background: #c21d33;
+}
+.ex-head .ex-tier.t4 {
+  background: #1c1418;
+  color: #f2d27a;
+}
+.ex-head {
+  justify-content: flex-start;
+  align-items: center;
+}
+.ex-progress {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ex-nav {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.ex-nav button {
+  min-width: 0;
+  padding: 9px 4px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+/* 닫기 · 카드 · 바로 기입 · 이전 · 다음 — 넓은 화면은 한 줄 (다음이 넓게) */
+.ex-nav.ex-five {
+  grid-auto-flow: row;
+  grid-template-columns: 1fr 1fr 1.2fr 1fr 1.6fr;
+}
+/* 데스크톱: 풀이 중엔 판을 조금 줄여 설명 패널 자리를 만든다 (오버레이는 viewBox 라 같이 줄어든다) */
+@media (min-width: 901px) {
+  .center.explaining {
+    --size: min(52vh, 560px);
+  }
+}
+@media (max-width: 520px) {
+  /* 좁은 화면: 위 줄 이전 · 다음, 아래 줄 카드 · 바로 기입 · 닫기 */
+  .ex-nav.ex-five {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-areas: 'prev prev next next next next' 'card card skip skip close close';
+  }
+  .ex-five [data-x='prev'] {
+    grid-area: prev;
+  }
+  .ex-five [data-x='next'] {
+    grid-area: next;
+  }
+  .ex-five [data-x='card'] {
+    grid-area: card;
+  }
+  .ex-five [data-x='skip'] {
+    grid-area: skip;
+  }
+  .ex-five [data-x='close'] {
+    grid-area: close;
+  }
+  .ex-nav button {
+    font-size: 13px;
+  }
+}
+.ex-cardboard {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4%;
+  border-radius: 14px;
+  background: var(--panel);
+  animation: ex-in 0.25s ease-out;
+}
+.ex-cardboard[hidden] {
+  display: none;
+}
+.ex-cardboard span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.ex-cardboard .ex-dia {
+  width: auto;
+  height: 0;
+  flex: 1;
+  aspect-ratio: 1;
+  max-width: 100%;
+}
+.ex-card h4 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  color: var(--accent);
+}
+.ex-card p {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+.ex-memo {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--soft);
+  font-weight: 800;
+}
+.ex-dia {
+  width: 100%;
+  background: var(--panel);
+  border: 2px solid var(--thick);
+  border-radius: 10px;
+  font-family: Nunito, sans-serif;
+  font-weight: 800;
+}
+.ex-dia .a {
+  fill: var(--accent);
+  opacity: 0.14;
+}
+.ex-dia line.thin {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.ex-dia line.thick {
+  stroke: var(--thick);
+  stroke-width: 2;
+}
+.ex-dia text {
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.ex-dia .dg {
+  fill: var(--ink);
+  font-size: 16px;
+}
+.ex-dia .c {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.ex-dia .ls {
+  stroke: #7a5cff;
+  stroke-width: 3;
+}
+.ex-dia .lw {
+  stroke: #b49cff;
+  stroke-width: 2.5;
+  stroke-dasharray: 4 3;
+}
+.ex-dia .dt {
+  fill: #4f8cff;
+}
+.ex-dia .dt.on {
+  fill: #2fb36d;
+}
+.ex-dia .dt.off {
+  fill: #ff8a3d;
+}
+.ex-dia .dl {
+  fill: #fff;
+  font-size: 10px;
+}
+.ex-dia .xx {
+  stroke: #e5303f;
+  stroke-width: 3;
+  stroke-linecap: round;
 }

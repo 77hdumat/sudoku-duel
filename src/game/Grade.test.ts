@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { explainNext, grade, logicSolve } from './Grade';
+import { explainNext, grade, J, logicSolve } from './Grade';
+import { TECHS } from './Techniques';
 import { countSolutions, generate, LEVELS, mulberry32, shuffle, type Grid, type Level } from './Sudoku';
 
 /** 채점 필터 없이 힌트 수만 맞춘 판 (기술마다 골고루 걸리도록) */
@@ -55,8 +56,10 @@ describe('explainNext (풀이)', () => {
       const steps = explainNext(grid, ruledOut);
       expect(steps.length).toBeGreaterThan(0);
       for (const st of steps) {
-        names.add(st.name);
-        expect(st.text.length).toBeGreaterThan(0);
+        names.add(st.id);
+        expect(st.phases.length).toBeGreaterThan(1);
+        for (const ph of st.phases) expect(ph.text.length).toBeGreaterThan(0);
+        expect(TECHS[st.id]).toBeDefined();
         for (const { i, d } of st.elim) {
           expect(solution[i]).not.toBe(d);
           ruledOut[i] |= 1 << (d - 1);
@@ -69,13 +72,22 @@ describe('explainNext (풀이)', () => {
     }
     expect(grid).toEqual(solution);
     // 변성대왕이니 사람 기술로는 막히는 지점이 있어 가정(포싱)까지 쓰게 된다
-    expect([...names].some((n) => n.includes('포싱') || n.includes('가정'))).toBe(true);
+    expect(names.has('forcing')).toBe(true);
   }, 60000);
 
   it('쉬운 판은 첫 풀이가 하나(single)로 바로 숫자를 정한다', () => {
     const { puzzle, solution } = generate('easy', mulberry32(2));
     const [st] = explainNext(puzzle);
-    expect(st.name).toMatch(/하나/);
+    expect(st.id).toMatch(/single/);
     expect(st.place!.v).toBe(solution[st.place!.i]);
+  });
+});
+
+describe('J (조사)', () => {
+  it('받침 있으면 앞, 없으면 뒤', () => {
+    expect(J(7, '이', '가')).toBe('7이');
+    expect(J(2, '이', '가')).toBe('2가');
+    expect(J('3행', '은', '는')).toBe('3행은');
+    expect(J('2번 박스', '을', '를')).toBe('2번 박스를');
   });
 });

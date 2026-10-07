@@ -1,4 +1,5 @@
 import { candidates, countSolutions, geo, type Geo, type Grid } from './Sudoku';
+import type { TechId } from './Techniques';
 
 /**
  * 사람이 쓰는 기술로 판을 풀어 보고, 끝내려면 꼭 필요했던 가장 어려운 단계를 매긴다 (나무위키 스도쿠/공략법 분류).
@@ -10,6 +11,8 @@ import { candidates, countSolutions, geo, type Geo, type Grid } from './Sudoku';
  * 4 고급: 교대 추론 사슬(AIC)이 필요하다. 보통 한두 번 쓰고 나면 다시 쉬워진다
  * 5 그 이상: AIC 로도 막힘 — ALS · 포싱 체인 같은 초고급 기술이 있어야 풀린다
  * 쉬운 단계로 진전이 있으면 늘 그쪽을 먼저 쓴다 (사람도 쉬운 것부터 찾으니까).
+ *
+ * 풀이(explainNext)를 켜면 기술이 발동할 때마다 사람이 생각하는 순서대로 쪼갠 서술(phase)과 그릴 재료를 남긴다.
  */
 export type Tier = 0 | 1 | 2 | 3 | 4 | 5;
 
@@ -33,54 +36,100 @@ function* combos<T>(arr: T[], n: number, from = 0): Generator<T[]> {
   for (let i = from; i <= arr.length - n; i++) for (const rest of combos(arr, n - 1, i + 1)) yield [arr[i], ...rest];
 }
 
-/** 풀이 한 단계 — 화면에 그릴 재료 (숫자는 1~9, 칸은 0~80) */
-export interface Step {
-  name: string;
-  text: string;
-  /** 패턴을 이루는 칸 (진하게) */
-  cells: number[];
-  /** 근거가 되는 행·열·박스 (옅게) */
-  area: number[];
-  /** 후보 강조: key = 패턴, on = 참이 되는 후보, off = 거짓이 되는 후보 */
-  marks: { i: number; d: number; tone: 'key' | 'on' | 'off' }[];
-  /** 사슬 링크: 강한 링크(실선) = 한쪽이 거짓이면 다른 쪽이 참, 약한 링크(점선) = 둘 다 참일 수는 없음 */
-  links: { a: [number, number]; b: [number, number]; strong: boolean }[];
-  /** 지우는 후보 */
-  elim: { i: number; d: number }[];
-  /** 확정되는 칸 */
+/* ───────── 풀이 기록 ───────── */
+
+export type Tone = 'key' | 'on' | 'off';
+/** 후보 [칸, 숫자] */
+export type Cand = [number, number];
+export interface Link {
+  a: Cand;
+  b: Cand;
+  /** 강한 연결(실선): 한쪽이 거짓이면 다른 쪽은 참 / 약한 연결(점선): 둘 다 참일 수는 없음 */
+  strong: boolean;
+}
+
+/** 한 서술에 덧그릴 것들 (숫자는 1~9, 칸은 0~80) */
+export interface Draw {
+  /** 근거 유닛 (옅게) */
+  area?: number[];
+  /** 패턴 칸 (테두리) */
+  cells?: number[];
+  /** 후보 동그라미 — key 패턴, on 참, off 거짓 */
+  marks?: { i: number; d: number; tone: Tone }[];
+  links?: Link[];
+  /** 경우 나누기에서 '이렇게 되면' 하고 칸에 띄우는 숫자 */
+  ghosts?: { i: number; v: number; tone: 'on' | 'off' }[];
+  /** 숨겨진 하나: 막혀서 못 오는 칸 */
+  blocked?: number[];
+  elim?: { i: number; d: number }[];
   place?: { i: number; v: number };
-  /** 포싱: 가정한 숫자 → 그 뒤로 정해지는 칸들(순서대로) → 모순이 난 칸 */
+  /** 포싱: 가정 → 줄줄이 정해지는 칸 → 모순 */
   assume?: { i: number; v: number };
   trail?: { i: number; v: number }[];
   bad?: number[];
 }
-type Info = Omit<Step, 'elim' | 'place'>;
+
+/** 생각 한 걸음: 글 + 이번에 새로 그릴 것 (draw 는 다음 서술에도 남고, temp 는 이 서술에서만 — 경우 나누기용) */
+export interface Phase {
+  text: string;
+  draw?: Draw;
+  temp?: Draw;
+}
+
+/** 풀이 한 단계 = 기술 한 번 */
+export interface Step {
+  id: TechId;
+  phases: Phase[];
+  /** 이 기술을 쓰기 직전의 후보 (칸별 비트) — 화면에 옅게 깔아 사슬을 따라가게 한다 */
+  cands: number[];
+  elim: { i: number; d: number }[];
+  place?: { i: number; v: number };
+}
+type Info = { id: TechId; phases: Phase[] };
 
 /** explainNext 가 켜 두면 기술이 발동할 때마다 단계를 남긴다 (채점 중엔 null) */
 let say: ((st: Step) => void) | null = null;
 
 const digitOf = (bit: number) => 32 - Math.clz32(bit);
-const rc = (i: number) => `${Math.floor(i / N) + 1}행 ${(i % N) + 1}열`;
+
+/** 받침에 맞는 조사: J(7, '이', '가') → '7이', J('3행', '은', '는') → '3행은' */
+export function J(word: string | number, withFinal: string, without: string): string {
+  const s = String(word);
+  const ch = s[s.length - 1];
+  let has: boolean;
+  if (/[0-9]/.test(ch)) has = '013678'.includes(ch);
+  else {
+    const code = ch.charCodeAt(0) - 0xac00;
+    has = code >= 0 && code < 11172 ? code % 28 !== 0 : false;
+  }
+  return s + (has ? withFinal : without);
+}
+
+const cell = (i: number) => `${Math.floor(i / N) + 1}행 ${(i % N) + 1}열`;
 function unitName(u: number[]): string {
   const k = UNITS.indexOf(u);
   return k < N ? `${k + 1}행` : k < 2 * N ? `${k - N + 1}열` : `${k - 2 * N + 1}번 박스`;
 }
 const list = (m: number) => bits(m).map(digitOf).join('·');
+const nums = (vs: number[]) => [...new Set(vs)].sort().join('·');
 const keyMarks = (cells: number[], mask: number, s: State) =>
-  cells.flatMap((i) => bits(s.c[i] & mask).map((b) => ({ i, d: digitOf(b), tone: 'key' as const })));
+  cells.flatMap((i) => bits(s.c[i] & mask).map((b) => ({ i, d: digitOf(b), tone: 'key' as Tone })));
+const unitWith = (a: number, b: number) => UNITS.find((u) => u.includes(a) && u.includes(b))!;
 
-/** cells 에서 mask 후보를 지우고, 지운 게 있으면 단계를 남긴다 */
-function fire(s: State, cells: number[], mask: number, info: () => Info): boolean {
+/** cells 에서 mask 후보를 지우고, 지운 게 있으면 단계를 남긴다 (info 의 마지막 서술 뒤에 '지우기' 를 붙인다) */
+function fire(s: State, cells: number[], mask: number, info: (elim: Step['elim']) => Info): boolean {
   const elim = say ? cells.flatMap((i) => bits(s.c[i] & mask).map((b) => ({ i, d: digitOf(b) }))) : [];
+  const cands = say ? s.c.slice() : [];
   if (!s.drop(cells, mask)) return false;
-  say?.({ ...info(), elim });
+  if (say) say({ ...info(elim), elim, cands });
   return true;
 }
 
 /** 칸을 확정하고 단계를 남긴다 */
 function put(s: State, i: number, v: number, info: () => Info): true {
+  const cands = say ? s.c.slice() : [];
   s.place(i, v);
-  say?.({ ...info(), elim: [], place: { i, v } });
+  if (say) say({ ...info(), elim: [], place: { i, v }, cands });
   return true;
 }
 
@@ -113,32 +162,46 @@ class State {
   }
 }
 
+/* ───────── 기술 ───────── */
+
 function singles(s: State): boolean {
   for (let i = 0; i < CELLS; i++)
     if (s.c[i] && count(s.c[i]) === 1) {
       const v = digitOf(s.c[i]);
-      return put(s, i, v, () => ({
-        name: '드러난 하나 (Naked Single)',
-        text: `${rc(i)} 의 행·열·박스에 다른 숫자가 다 있어서, 남는 후보는 ${v} 하나뿐이에요.`,
-        cells: [i],
-        area: PEERS[i],
-        marks: [{ i, d: v, tone: 'on' }],
-        links: [],
-      }));
+      return put(s, i, v, () => {
+        const [row, col, box] = UNITS.filter((u) => u.includes(i));
+        const seen = (u: number[]) => u.filter((k) => s.g[k] && k !== i);
+        const has = (u: number[]) => `${unitName(u)}엔 ${nums(seen(u).map((k) => s.g[k])) || '없음'}`;
+        return {
+          id: 'naked-single',
+          phases: [
+            { text: `${J(cell(i), '은', '는')} 행·열·박스로 20칸을 봐요. 거기 이미 놓인 숫자는 이 칸에 못 와요.`, draw: { cells: [i], area: PEERS[i] } },
+            { text: `${has(row)}, ${has(col)}, ${has(box)}.`, draw: { cells: [...seen(row), ...seen(col), ...seen(box)] } },
+            { text: `1~${N} 중 빠진 숫자는 ${v} 하나뿐 → ${cell(i)} = ${v}.`, draw: { place: { i, v } } },
+          ],
+        };
+      });
     }
   for (const u of UNITS)
     for (let v = 1; v <= N; v++) {
       const spots = u.filter((i) => s.c[i] & (1 << (v - 1)));
-      if (spots.length === 1)
-        return put(s, spots[0], v, () => ({
-          name: '숨겨진 하나 (Hidden Single)',
-          text: `${unitName(u)} 에서 ${v} 가 들어갈 수 있는 칸은 ${rc(spots[0])} 하나뿐이에요. 다른 칸은 같은 줄·박스에 ${v} 가 이미 있어요.`,
-          // 같은 유닛의 다른 빈칸을 막고 있는 v 들도 같이 보여 준다
-          cells: [spots[0], ...new Set(u.filter((i) => !s.g[i] && i !== spots[0]).flatMap((i) => PEERS[i].filter((p) => s.g[p] === v && !u.includes(p))))],
-          area: u,
-          marks: [{ i: spots[0], d: v, tone: 'on' }],
-          links: [],
-        }));
+      if (spots.length !== 1) continue;
+      const i = spots[0];
+      return put(s, i, v, () => {
+        const others = u.filter((k) => !s.g[k] && k !== i);
+        const blockers = [...new Set(others.flatMap((k) => PEERS[k].filter((p) => s.g[p] === v && !u.includes(p))))];
+        return {
+          id: 'hidden-single',
+          phases: [
+            { text: `${unitName(u)}에도 ${J(v, '이', '가')} 꼭 한 번 들어가요. 어디에 들어갈 수 있을까요?`, draw: { area: u } },
+            {
+              text: `이미 놓인 ${v}들(테두리)이 같은 행·열·박스를 막아요. ✕ 칸에는 ${J(v, '이', '가')} 못 와요.`,
+              draw: { cells: blockers, blocked: others },
+            },
+            { text: `남은 자리는 ${cell(i)} 하나 → ${v}.`, draw: { place: { i, v } } },
+          ],
+        };
+      });
     }
   return false;
 }
@@ -155,16 +218,20 @@ function intersections(s: State): boolean {
           [line, box],
         ]) {
           const inA = a.filter((i) => s.c[i] & bit);
+          const v = digitOf(bit);
           if (
             inA.length &&
             inA.every((i) => shared.includes(i)) &&
-            fire(s, b.filter((i) => !shared.includes(i)), bit, () => ({
-              name: '교차로 (Pointing / Claiming)',
-              text: `${unitName(a)} 의 ${digitOf(bit)} 는 ${unitName(b)} 와 겹치는 칸에만 올 수 있어요. 그러니 ${unitName(b)} 의 나머지 칸에는 ${digitOf(bit)} 가 못 와요.`,
-              cells: inA,
-              area: [...a, ...b],
-              marks: keyMarks(inA, bit, s),
-              links: [],
+            fire(s, b.filter((i) => !shared.includes(i)), bit, (elim) => ({
+              id: 'intersection',
+              phases: [
+                { text: `${unitName(a)}에서 ${J(v, '이', '가')} 들어갈 수 있는 자리를 봐요.`, draw: { area: a, marks: inA.map((i) => ({ i, d: v, tone: 'key' })) } },
+                {
+                  text: `전부 ${unitName(b)}와 겹치는 칸에 있어요. ${unitName(a)}의 ${J(v, '은', '는')} 어디에 놓이든 ${unitName(b)} 안이에요.`,
+                  draw: { area: b, cells: inA },
+                },
+                { text: `${unitName(b)}의 ${J(v, '은', '는')} 이 칸들 몫이니, ${unitName(b)}의 나머지 칸에서 ${J(v, '을', '를')} 지워요.`, draw: { elim } },
+              ],
             }))
           )
             return true;
@@ -183,13 +250,16 @@ function subsets(s: State): boolean {
         const m = cells.reduce((acc, i) => acc | s.c[i], 0);
         if (
           count(m) === n &&
-          fire(s, empty.filter((i) => !cells.includes(i)), m, () => ({
-            name: `드러난 부분집합 (Naked ${['', '', 'Pair', 'Triple', 'Quad'][n]})`,
-            text: `${unitName(u)} 의 ${n}칸에 들어갈 수 있는 숫자가 ${list(m)} ${n}개뿐이에요. 이 숫자들은 이 ${n}칸이 나눠 가지니, 같은 ${unitName(u)} 의 다른 칸에서는 지워요.`,
-            cells,
-            area: u,
-            marks: keyMarks(cells, m, s),
-            links: [],
+          fire(s, empty.filter((i) => !cells.includes(i)), m, (elim) => ({
+            id: 'naked-subset',
+            phases: [
+              {
+                text: `${unitName(u)}의 ${n}칸(${cells.map(cell).join(', ')})을 봐요. 후보를 다 합쳐도 ${list(m)} ${n}개뿐이에요.`,
+                draw: { area: u, cells, marks: keyMarks(cells, m, s) },
+              },
+              { text: `${n}칸에 ${n}개 숫자 — 어느 칸이 무엇을 갖든 ${list(m)}는 이 ${n}칸이 다 써 버려요.` },
+              { text: `그러니 ${unitName(u)}의 다른 칸에는 ${list(m)}가 못 와요. 지워요.`, draw: { elim } },
+            ],
           }))
         )
           return true;
@@ -200,13 +270,15 @@ function subsets(s: State): boolean {
         const cells = empty.filter((i) => s.c[i] & m);
         if (
           cells.length === n &&
-          fire(s, cells, ~m & ALL, () => ({
-            name: `숨겨진 부분집합 (Hidden ${['', '', 'Pair', 'Triple', 'Quad'][n]})`,
-            text: `${unitName(u)} 에서 ${list(m)} 는 이 ${n}칸에만 올 수 있어요. ${n}칸이 이 숫자들로 꽉 차니, 이 칸들의 다른 후보는 지워요.`,
-            cells,
-            area: u,
-            marks: keyMarks(cells, m, s),
-            links: [],
+          fire(s, cells, ~m & ALL, (elim) => ({
+            id: 'hidden-subset',
+            phases: [
+              {
+                text: `${unitName(u)}에서 ${list(m)}가 들어갈 수 있는 칸을 찾아보면 ${n}칸(${cells.map(cell).join(', ')})뿐이에요.`,
+                draw: { area: u, cells, marks: keyMarks(cells, m, s) },
+              },
+              { text: `${n}개 숫자가 이 ${n}칸을 꽉 채우니, 이 칸들엔 다른 숫자가 들어갈 틈이 없어요. 나머지 후보를 지워요.`, draw: { elim } },
+            ],
           }))
         )
           return true;
@@ -229,18 +301,39 @@ function fish(s: State): boolean {
         for (const pick of combos(rows, n)) {
           const cols = pick.reduce((m, r) => m | pos[r], 0);
           if (count(cols) !== n) continue;
-          const victims = bits(cols).flatMap((cb) => cover[31 - Math.clz32(cb)].filter((i) => !pick.some((r) => base[r].includes(i))));
-          const corners = pick.flatMap((r) => base[r].filter((i) => s.c[i] & bit));
-          const lines = (us: number[][]) => us.map(unitName).join('·');
+          const coverLines = bits(cols).map((cb) => cover[31 - Math.clz32(cb)]);
+          const baseLines = pick.map((r) => base[r]);
+          const victims = coverLines.flatMap((c) => c.filter((i) => !baseLines.some((b) => b.includes(i))));
+          const v = digitOf(bit);
+          const corners = baseLines.map((b) => b.filter((i) => s.c[i] & bit));
           if (
-            fire(s, victims, bit, () => ({
-              name: ['', '', 'X-윙 (X-Wing)', '황새치 (Swordfish)', '해파리 (Jellyfish)'][n],
-              text: `${lines(pick.map((r) => base[r]))} 의 ${digitOf(bit)} 자리가 모두 ${lines(bits(cols).map((cb) => cover[31 - Math.clz32(cb)]))} 안에만 있어요. ${n}줄이 각각 ${digitOf(bit)} 를 하나씩 가져가면 그 ${n}줄을 다 채우니, 그 줄들의 다른 칸에는 ${digitOf(bit)} 가 못 와요.`,
-              cells: corners,
-              area: [...pick.flatMap((r) => base[r]), ...bits(cols).flatMap((cb) => cover[31 - Math.clz32(cb)])],
-              marks: keyMarks(corners, bit, s),
-              links: [],
-            }))
+            fire(s, victims, bit, (elim) => {
+              const bn = baseLines.map(unitName).join('·');
+              const cn = coverLines.map(unitName).join('·');
+              const flat = corners.flat();
+              const phases: Phase[] = [
+                {
+                  text: `숫자 ${v}만 봐요. ${bn}에서 ${J(v, '이', '가')} 들어갈 자리는 줄마다 ${n}곳 이하예요.`,
+                  draw: { area: baseLines.flat(), marks: flat.map((i) => ({ i, d: v, tone: 'key' })) },
+                },
+                {
+                  text: `그 자리가 모두 ${cn} 안에 있어요.`,
+                  draw: { area: coverLines.flat(), links: corners.filter((c) => c.length === 2).map((c) => ({ a: [c[0], v], b: [c[1], v], strong: true })) },
+                },
+              ];
+              if (n === 2 && corners.every((c) => c.length === 2)) {
+                const [[p1, p2], [q1, q2]] = corners;
+                // 같은 열끼리 짝 맞추기
+                const [d1, d2] = unitWith(p1, q1) ? [q2, q1] : [q1, q2];
+                phases.push(
+                  { text: `경우 ①: ${cell(p1)}에 ${J(v, '이', '가')} 오면 → ${cell(d1)}에도 ${v}.`, temp: { ghosts: [p1, d1].map((i) => ({ i, v, tone: 'on' })) } },
+                  { text: `경우 ②: ${cell(p2)}에 ${J(v, '이', '가')} 오면 → ${cell(d2)}에도 ${v}.`, temp: { ghosts: [p2, d2].map((i) => ({ i, v, tone: 'on' })) } },
+                  { text: `어느 경우든 ${cn}의 ${J(v, '은', '는')} 이 네 칸이 다 가져가요.` },
+                );
+              } else phases.push({ text: `${n}줄이 ${n}열을 하나씩 나눠 가지니, ${cn}의 ${J(v, '은', '는')} 모두 이 자리들에서 나와요.` });
+              phases.push({ text: `그러니 ${cn}의 다른 칸에서 ${J(v, '을', '를')} 지워요.`, draw: { elim } });
+              return { id: n === 2 ? 'x-wing' : n === 3 ? 'swordfish' : 'jellyfish', phases };
+            })
           )
             return true;
         }
@@ -262,18 +355,33 @@ function wings(s: State): boolean {
       const xyz = n === 3 && s.c[p] === (s.c[a] | s.c[b]);
       if (!xy && !xyz) continue;
       const victims = PEERS[a].filter((i) => IS_PEER[b][i] && i !== p && (xy || IS_PEER[p][i]));
+      const Z = digitOf(z);
+      const X = digitOf(s.c[a] & ~z);
+      const Y = digitOf(s.c[b] & ~z);
+      const pc = list(s.c[p]);
+      const ac = list(s.c[a]);
+      const bc = list(s.c[b]);
       if (
-        fire(s, victims, z, () => ({
-          name: xy ? 'XY-윙 (XY-Wing)' : 'XYZ-윙 (XYZ-Wing)',
-          text: xy
-            ? `축 ${rc(p)} {${list(s.c[p])}} 가 무엇이 되든 집게 ${rc(a)}·${rc(b)} 중 하나는 반드시 ${digitOf(z)} 예요. 그러니 두 집게를 모두 보는 칸에는 ${digitOf(z)} 가 못 와요.`
-            : `축 ${rc(p)} {${list(s.c[p])}} 와 집게 ${rc(a)}·${rc(b)} 셋 중 하나는 반드시 ${digitOf(z)} 예요. 셋을 모두 보는 칸에는 ${digitOf(z)} 가 못 와요.`,
-          cells: [p, a, b],
-          area: [],
-          marks: [...keyMarks([p, a, b], ALL, s)].map((m) => (m.d === digitOf(z) ? { ...m, tone: 'on' as const } : m)),
-          links: [
-            { a: [p, digitOf(s.c[a] & s.c[p] & ~z) || digitOf(z)], b: [a, digitOf(s.c[a] & s.c[p] & ~z) || digitOf(z)], strong: false },
-            { a: [p, digitOf(s.c[b] & s.c[p] & ~z) || digitOf(z)], b: [b, digitOf(s.c[b] & s.c[p] & ~z) || digitOf(z)], strong: false },
+        fire(s, victims, z, (elim) => ({
+          id: xy ? 'xy-wing' : 'xyz-wing',
+          phases: [
+            {
+              text: `축 ${cell(p)} {${pc}}, 축이 보는 집게 ${cell(a)} {${ac}}·${cell(b)} {${bc}}를 봐요.`,
+              draw: { cells: [p, a, b], marks: [p, a, b].flatMap((i) => bits(s.c[i]).map((bb) => ({ i, d: digitOf(bb), tone: 'key' as Tone }))) },
+            },
+            {
+              text: `경우 ①: 축이 ${J(X, '이', '가')}면 → ${J(cell(a), '은', '는')} ${J(X, '이', '가')} 될 수 없으니 ${Z}.`,
+              temp: { ghosts: [{ i: p, v: X, tone: 'on' }, { i: a, v: Z, tone: 'on' }], links: [{ a: [p, X], b: [a, X], strong: false }] },
+            },
+            {
+              text: `경우 ②: 축이 ${J(Y, '이', '가')}면 → ${J(cell(b), '은', '는')} ${Z}.`,
+              temp: { ghosts: [{ i: p, v: Y, tone: 'on' }, { i: b, v: Z, tone: 'on' }], links: [{ a: [p, Y], b: [b, Y], strong: false }] },
+            },
+            ...(xyz ? [{ text: `경우 ③: 축이 ${J(Z, '이', '가')}면 → 축 자신이 ${Z}.`, temp: { ghosts: [{ i: p, v: Z, tone: 'on' as const }] } }] : []),
+            {
+              text: `어느 경우든 ${xyz ? '세 칸' : '두 집게'} 중 하나는 ${Z}! ${xyz ? '세 칸을' : '두 집게를'} 모두 보는 칸에는 ${J(Z, '이', '가')} 못 와요.`,
+              draw: { area: victims, elim },
+            },
           ],
         }))
       )
@@ -296,17 +404,33 @@ function wWing(s: State): boolean {
         if (!((IS_PEER[a][p] && IS_PEER[b][q]) || (IS_PEER[a][q] && IS_PEER[b][p]))) continue;
         const y = s.c[a] & ~x;
         const [pa, qb] = IS_PEER[a][p] && IS_PEER[b][q] ? [p, q] : [q, p];
+        const X = digitOf(x);
+        const Y = digitOf(y);
+        const victims = PEERS[a].filter((i) => IS_PEER[b][i]);
         if (
-          fire(s, PEERS[a].filter((i) => IS_PEER[b][i]), y, () => ({
-            name: 'W-윙 (W-Wing)',
-            text: `${rc(a)}·${rc(b)} 는 둘 다 {${list(s.c[a])}} 예요. ${unitName(u)} 에서 ${digitOf(x)} 는 두 자리 중 하나라, 두 칸이 동시에 ${digitOf(x)} 일 수는 없어요. 그러니 둘 중 하나는 ${digitOf(y)} — 두 칸을 다 보는 칸에서 ${digitOf(y)} 를 지워요.`,
-            cells: [a, b, p, q],
-            area: u,
-            marks: [...keyMarks([a, b], ALL, s), ...keyMarks([p, q], x, s)],
-            links: [
-              { a: [a, digitOf(x)], b: [pa, digitOf(x)], strong: false },
-              { a: [pa, digitOf(x)], b: [qb, digitOf(x)], strong: true },
-              { a: [qb, digitOf(x)], b: [b, digitOf(x)], strong: false },
+          fire(s, victims, y, (elim) => ({
+            id: 'w-wing',
+            phases: [
+              { text: `${cell(a)}와 ${J(cell(b), '은', '는')} 후보가 똑같이 {${X}·${Y}}예요.`, draw: { cells: [a, b], marks: [a, b].flatMap((i) => [X, Y].map((d) => ({ i, d, tone: 'key' as Tone }))) } },
+              {
+                text: `${unitName(u)}에서 ${J(X, '이', '가')} 들어갈 자리는 ${cell(pa)}·${cell(qb)} 둘뿐 — 둘 중 하나는 반드시 ${X} (강한 연결).`,
+                draw: { area: u, cells: [pa, qb], marks: [pa, qb].map((i) => ({ i, d: X, tone: 'key' as Tone })), links: [{ a: [pa, X], b: [qb, X], strong: true }] },
+              },
+              {
+                text: `${J(cell(a), '이', '가')} ${Y}가 아니라면 → ${X} → 보고 있는 ${J(cell(pa), '은', '는')} ${X} 불가 → ${J(cell(qb), '이', '가')} ${X} → ${J(cell(b), '은', '는')} ${X} 불가 → ${cell(b)} = ${Y}.`,
+                temp: {
+                  ghosts: [
+                    { i: a, v: X, tone: 'on' },
+                    { i: qb, v: X, tone: 'on' },
+                    { i: b, v: Y, tone: 'on' },
+                  ],
+                  links: [
+                    { a: [a, X], b: [pa, X], strong: false },
+                    { a: [qb, X], b: [b, X], strong: false },
+                  ],
+                },
+              },
+              { text: `즉 두 칸 중 하나는 반드시 ${Y}. 두 칸을 모두 보는 칸에서 ${J(Y, '을', '를')} 지워요.`, draw: { area: victims, elim } },
             ],
           }))
         )
@@ -335,15 +459,27 @@ function finnedXWing(s: State): boolean {
           const covered = [...cover[c1], ...cover[c2]];
           const fins = spots.filter((i) => !covered.includes(i));
           if (!fins.length || fins.some((i) => BOX[i] !== BOX[fins[0]])) continue;
+          const box = UNITS[2 * N + BOX[fins[0]]];
           const body = spots.filter((i) => covered.includes(i));
+          const v = digitOf(bit);
           if (
-            fire(s, covered.filter((i) => BOX[i] === BOX[fins[0]] && !lines.includes(i)), bit, () => ({
-              name: '핀드 X-윙 (Finned / Sashimi X-Wing)',
-              text: `${unitName(base[r1])}·${unitName(base[r2])} 의 ${digitOf(bit)} 는 거의 X-윙인데 지느러미(초록)가 붙어 있어요. 지느러미가 참이면 그 박스에서, 아니면 X-윙이 서서 그 열에서 — 어느 쪽이든 겹치는 칸에는 ${digitOf(bit)} 가 못 와요.`,
-              cells: spots,
-              area: [...base[r1], ...base[r2]],
-              marks: [...keyMarks(body, bit, s), ...fins.map((i) => ({ i, d: digitOf(bit), tone: 'on' as const }))],
-              links: [],
+            fire(s, covered.filter((i) => BOX[i] === BOX[fins[0]] && !lines.includes(i)), bit, (elim) => ({
+              id: 'finned-x-wing',
+              phases: [
+                {
+                  text: `숫자 ${v}만 봐요. ${unitName(base[r1])}·${unitName(base[r2])}의 ${J(v, '이', '가')} ${unitName(cover[c1])}·${unitName(cover[c2])} 직사각형(X-윙)에 거의 맞는데, ${unitName(box)}에 지느러미(초록)가 붙어 있어요.`,
+                  draw: { area: lines, marks: [...body.map((i) => ({ i, d: v, tone: 'key' as Tone })), ...fins.map((i) => ({ i, d: v, tone: 'on' as Tone }))] },
+                },
+                {
+                  text: `경우 ①: 지느러미가 ${J(v, '이', '가')}면 → 같은 ${unitName(box)}의 다른 칸은 ${v} 불가.`,
+                  temp: { area: box, ghosts: [{ i: fins[0], v, tone: 'on' }] },
+                },
+                {
+                  text: `경우 ②: 지느러미가 ${J(v, '이', '가')} 아니면 → 남은 자리가 진짜 X-윙 → ${unitName(cover[c1])}·${unitName(cover[c2])}의 다른 칸은 ${v} 불가.`,
+                  temp: { area: covered, cells: body },
+                },
+                { text: `두 경우 모두에서 지워지는 칸 = ${unitName(box)}와 두 줄이 겹치는 칸. 여기서 ${J(v, '을', '를')} 지워요.`, draw: { elim } },
+              ],
             }))
           )
             return true;
@@ -355,12 +491,37 @@ function finnedXWing(s: State): boolean {
 /** 후보 노드 (칸, 숫자 비트) */
 type Node = [number, number];
 
+/** 사슬 링크 하나를 말로: 왜 강한/약한 연결인지까지 */
+function linkText(l: Link): string {
+  const [ai, ad] = l.a;
+  const [bi, bd] = l.b;
+  if (l.strong) {
+    const why = ai === bi ? '이 칸 후보는 둘뿐' : `${unitName(unitWith(ai, bi))}에 ${J(ad, '이', '가')} 들어갈 자리는 둘뿐`;
+    return `${cell(ai)}의 ${J(ad, '이', '가')} 아니면 → ${cell(bi)}의 ${J(bd, '이', '가')} 참 (${why})`;
+  }
+  const why = ai === bi ? '한 칸엔 숫자 하나' : '서로 보는 칸';
+  return `${cell(ai)}의 ${J(ad, '이', '가')} 참이면 → ${cell(bi)}의 ${J(bd, '은', '는')} 거짓 (${why})`;
+}
+
+/** 사슬을 두 링크씩 끊어 서술로 */
+function walk(links: Link[]): Phase[] {
+  const out: Phase[] = [];
+  for (let k = 0; k < links.length; k += 2) {
+    const part = links.slice(k, k + 2);
+    out.push({
+      text: part.map(linkText).join('. ') + '.',
+      draw: { links: part, marks: part.map((l) => ({ i: l.b[0], d: l.b[1], tone: l.strong ? ('on' as Tone) : ('off' as Tone) })) },
+    });
+  }
+  return out;
+}
+
 /**
  * start 가 거짓이라고 두고 강한 링크(거짓→참)·약한 링크(참→거짓)를 번갈아 따라간다.
  * 참이 되는 노드에 start 와 같은 숫자가 있으면 둘 중 하나는 참이니, 두 칸을 다 보는 칸에서 그 숫자를 지운다.
  * 같은 노드가 참·거짓 둘 다 되거나 start 자신이 참이 되면 모순 → start 가 답.
  */
-function chainFrom(s: State, [c0, b0]: Node, strong: (n: Node) => Node[], weak: (n: Node) => Node[], name = '사슬'): boolean {
+function chainFrom(s: State, [c0, b0]: Node, strong: (n: Node) => Node[], weak: (n: Node) => Node[], id: TechId): boolean {
   const key = ([i, b]: Node) => i * 512 + b;
   // 경로를 되짚기 위해 어디서 왔는지 남긴다
   const on = new Map<number, Node>();
@@ -377,9 +538,9 @@ function chainFrom(s: State, [c0, b0]: Node, strong: (n: Node) => Node[], weak: 
       if (!isOn) hits.push(m);
     }
   }
-  // 거짓(start)에서 출발해 node 가 tone 이 되기까지의 링크
-  const path = (node: Node, isOn: boolean): Step['links'] => {
-    const out: Step['links'] = [];
+  // 거짓(start)에서 출발해 node 가 참/거짓이 되기까지의 링크
+  const path = (node: Node, isOn: boolean): Link[] => {
+    const out: Link[] = [];
     let cur: Node = node;
     let curOn = isOn;
     for (;;) {
@@ -391,44 +552,45 @@ function chainFrom(s: State, [c0, b0]: Node, strong: (n: Node) => Node[], weak: 
     }
     return out;
   };
-  const tones = (links: Step['links']): Step['marks'] => {
-    const seen = new Map<string, Step['marks'][number]>();
-    seen.set(`${c0}:${digitOf(b0)}`, { i: c0, d: digitOf(b0), tone: 'off' });
-    for (const l of links) seen.set(`${l.b[0]}:${l.b[1]}`, { i: l.b[0], d: l.b[1], tone: l.strong ? 'on' : 'off' });
-    return [...seen.values()];
-  };
+  const d0 = digitOf(b0);
+  const start: Phase = { text: `${cell(c0)}의 ${J(d0, '이', '가')} 아니라고(거짓) 가정하고 사슬을 따라가 봐요.`, draw: { marks: [{ i: c0, d: d0, tone: 'off' }] } };
   const clash = [...on.keys()].find((k) => off.has(k));
   if (clash != null) {
     const node: Node = [Math.floor(clash / 512), clash % 512];
-    return put(s, c0, digitOf(b0), () => {
-      const links = [...path(node, true), ...path(node, false)];
+    return put(s, c0, d0, () => {
+      const nd = digitOf(node[1]);
       return {
-        name: `${name} — 모순`,
-        text: `${rc(c0)} 가 ${digitOf(b0)} 가 아니라고 가정해 사슬을 따라가면, ${rc(node[0])} 의 ${digitOf(node[1])} 가 참이면서 동시에 거짓이 돼요. 가정이 틀렸으니 ${rc(c0)} = ${digitOf(b0)}.`,
-        cells: [...new Set(links.flatMap((l) => [l.a[0], l.b[0]]))],
-        area: [],
-        marks: tones(links),
-        links,
+        id,
+        phases: [
+          start,
+          ...walk(path(node, true)).map((p, k) => (k ? p : { ...p, text: `한쪽 길: ${p.text}` })),
+          ...walk(path(node, false)).map((p, k) => (k ? p : { ...p, text: `다른 길: ${p.text}` })),
+          {
+            text: `${cell(node[0])}의 ${J(nd, '이', '가')} 참이면서 동시에 거짓 — 모순! 가정이 틀렸으니 ${cell(c0)} = ${d0}.`,
+            draw: { bad: [node[0]], place: { i: c0, v: d0 } },
+          },
+        ],
       };
     });
   }
-  for (const [t, b] of hits)
+  for (const [t, b] of hits) {
+    if (b !== b0 || t === c0) continue;
+    const victims = PEERS[c0].filter((i) => IS_PEER[t][i]);
     if (
-      b === b0 &&
-      t !== c0 &&
-      fire(s, PEERS[c0].filter((i) => IS_PEER[t][i]), b0, () => {
-        const links = path([t, b], true);
-        return {
-          name,
-          text: `${rc(c0)} 의 ${digitOf(b0)} 가 거짓이면 사슬을 따라 ${rc(t)} 의 ${digitOf(b0)} 가 참이 돼요 (실선 = 한쪽이 거짓이면 다른 쪽은 참, 점선 = 둘 다 참일 순 없음). 그러니 둘 중 하나는 반드시 ${digitOf(b0)} — 두 칸을 다 보는 칸에서 ${digitOf(b0)} 를 지워요.`,
-          cells: [...new Set(links.flatMap((l) => [l.a[0], l.b[0]]))],
-          area: [],
-          marks: tones(links),
-          links,
-        };
-      })
+      fire(s, victims, b0, (elim) => ({
+        id,
+        phases: [
+          start,
+          ...walk(path([t, b], true)),
+          {
+            text: `결론: ${cell(c0)}의 ${J(d0, '이', '가')} 거짓이면 ${cell(t)}의 ${J(d0, '이', '가')} 참. 즉 둘 중 하나는 반드시 ${d0}! 두 칸을 모두 보는 칸에서 ${J(d0, '을', '를')} 지워요.`,
+            draw: { area: victims, elim },
+          },
+        ],
+      }))
     )
       return true;
+  }
   return false;
 }
 
@@ -442,7 +604,7 @@ function xChains(s: State): boolean {
     }
     const strong = ([i]: Node): Node[] => (partner.get(i) ?? []).map((j) => [j, bit]);
     const weak = ([i]: Node): Node[] => PEERS[i].filter((j) => s.c[j] & bit).map((j) => [j, bit]);
-    for (const i of partner.keys()) if (chainFrom(s, [i, bit], strong, weak, 'X-사슬 (X-Chain)')) return true;
+    for (const i of partner.keys()) if (chainFrom(s, [i, bit], strong, weak, 'x-chain')) return true;
   }
   return false;
 }
@@ -452,7 +614,7 @@ function xyChains(s: State): boolean {
   const bivalue = (i: number) => count(s.c[i]) === 2;
   const strong = ([i, b]: Node): Node[] => [[i, s.c[i] & ~b]];
   const weak = ([i, b]: Node): Node[] => PEERS[i].filter((j) => bivalue(j) && s.c[j] & b).map((j) => [j, b]);
-  for (let i = 0; i < CELLS; i++) if (bivalue(i)) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak, 'XY-사슬 (XY-Chain)')) return true;
+  for (let i = 0; i < CELLS; i++) if (bivalue(i)) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak, 'xy-chain')) return true;
   return false;
 }
 
@@ -470,15 +632,24 @@ function uniqueness(s: State): boolean {
       if (pairs.length !== 3 || pairs.some((i) => s.c[i] !== s.c[pairs[0]])) continue;
       const odd = cells.find((i) => !pairs.includes(i))!;
       const m = s.c[pairs[0]];
+      const [A, B] = bits(m).map(digitOf);
+      // 대각선 짝: 같은 행·열이 아닌 칸끼리 같은 숫자
+      const diag = (i: number) => cells.find((k) => k !== i && Math.floor(k / N) !== Math.floor(i / N) && k % N !== i % N)!;
+      const ghost = (a: number, b: number) =>
+        cells.map((i) => ({ i, v: i === cells[0] || i === diag(cells[0]) ? a : b, tone: 'on' as const }));
       if (
         (s.c[odd] & m) === m &&
-        fire(s, [odd], m, () => ({
-          name: '유일성 논법 (Unique Rectangle 1형)',
-          text: `네 칸이 두 박스에 걸친 직사각형인데 세 칸이 {${list(m)}} 뿐이에요. 넷째 칸까지 ${list(m)} 중 하나면 두 숫자를 맞바꿔도 되는 '답이 두 개' 판이 돼요. 답은 하나뿐이니 넷째 칸에서 ${list(m)} 를 지워요.`,
-          cells,
-          area: [],
-          marks: keyMarks(cells, m, s),
-          links: [],
+        fire(s, [odd], m, (elim) => ({
+          id: 'unique-rectangle',
+          phases: [
+            {
+              text: `네 칸(${cells.map(cell).join(', ')})이 두 행·두 열·두 박스에 걸친 직사각형이에요. 그중 세 칸은 후보가 {${A}·${B}}뿐이에요.`,
+              draw: { cells, marks: keyMarks(cells, m, s) },
+            },
+            { text: `만약 ${cell(odd)}까지 ${A}나 ${J(B, '이', '가')} 된다면 이렇게 놓이고…`, temp: { ghosts: ghost(A, B) } },
+            { text: `${A}와 ${J(B, '을', '를')} 맞바꿔도 똑같이 성립해요 → 답이 두 개! 스도쿠 답은 하나뿐이라 이럴 수 없어요.`, temp: { ghosts: ghost(B, A) } },
+            { text: `그러니 ${J(cell(odd), '은', '는')} ${A}·${J(B, '이', '가')} 아니에요. 지워요.`, draw: { elim } },
+          ],
         }))
       )
         return true;
@@ -489,15 +660,18 @@ function uniqueness(s: State): boolean {
     const t = triple[0];
     const row = UNITS[Math.floor(t / N)];
     const b = bits(s.c[t]).find((bit) => row.filter((i) => s.c[i] & bit).length === 3);
-    if (b)
-      return put(s, t, digitOf(b), () => ({
-        name: '유일성 논법 (BUG+1)',
-        text: `빈칸이 전부 후보 2개인데 ${rc(t)} 만 3개예요. 이 칸을 빼면 '답이 여러 개' 가 되는 꼴이라, 행에서 3번 나오는 ${digitOf(b)} 가 이 칸의 답이에요.`,
-        cells: [t],
-        area: row,
-        marks: [{ i: t, d: digitOf(b), tone: 'on' }],
-        links: [],
+    if (b) {
+      const v = digitOf(b);
+      const tc = list(s.c[t]);
+      return put(s, t, v, () => ({
+        id: 'bug',
+        phases: [
+          { text: `빈칸이 전부 후보 2개인데 ${cell(t)}만 {${tc}} 3개예요.`, draw: { cells: [t], area: open } },
+          { text: `이 칸까지 2개였다면 답이 여러 개가 되는 꼴이에요. ${unitName(row)}에서 세 번 나오는 ${J(v, '이', '가')} 넘치는 숫자예요.`, draw: { area: row } },
+          { text: `그러니 ${cell(t)} = ${v}.`, draw: { place: { i: t, v } } },
+        ],
       }));
+    }
   }
   return false;
 }
@@ -518,16 +692,16 @@ function aic(s: State): boolean {
     ...PEERS[i].filter((j) => s.c[j] & b).map((j): Node => [j, b]),
     ...bits(s.c[i] & ~b).map((o): Node => [i, o]),
   ];
-  for (let i = 0; i < CELLS; i++) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak, '교대 추론 사슬 (AIC)')) return true;
+  for (let i = 0; i < CELLS; i++) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak, 'aic')) return true;
   return false;
 }
 
 /** 빈칸인데 후보가 없거나, 유닛에 아직 없는 숫자가 들어갈 자리가 없으면 모순 (그 칸·유닛과 이유) */
 function broken(s: State): { cells: number[]; why: string } | null {
-  for (let i = 0; i < CELLS; i++) if (!s.g[i] && !s.c[i]) return { cells: [i], why: `${rc(i)} 에 넣을 수 있는 숫자가 하나도 없어요` };
+  for (let i = 0; i < CELLS; i++) if (!s.g[i] && !s.c[i]) return { cells: [i], why: `${cell(i)}에 넣을 수 있는 숫자가 하나도 없어요` };
   for (const u of UNITS)
     for (let v = 1; v <= N; v++)
-      if (!u.some((i) => s.g[i] === v) && !u.some((i) => s.c[i] & (1 << (v - 1)))) return { cells: u, why: `${unitName(u)} 에 ${v} 가 들어갈 자리가 없어요` };
+      if (!u.some((i) => s.g[i] === v) && !u.some((i) => s.c[i] & (1 << (v - 1)))) return { cells: u, why: `${unitName(u)}에 ${J(v, '이', '가')} 들어갈 자리가 없어요` };
   return null;
 }
 
@@ -566,21 +740,20 @@ function forcing(s: State): boolean {
       if (!bad) continue;
       const v = digitOf(b);
       const trail = (t.log ?? []).map((k) => ({ i: k, v: t.g[k] }));
-      const why = bad.why;
-      const badCells = bad.cells;
-      return fire(s, [i], b, () => ({
-        name: depth === 0 ? '포싱 체인 (가정 → 모순)' : depth === 1 ? '포싱 체인 (깊은 가정 → 모순)' : '끝까지 가정해 보기 (Trial & Error)',
-        text:
-          depth < 2
-            ? `${rc(i)} 에 ${v} 를 넣었다고 가정해요 (주황). ${depth === 0 ? '하나·교차로 같은 기초 기술' : '사슬 기술'}로 따라가면 초록 숫자 ${trail.length}개가 차례로 정해지다가, ${why} (빨강). 가정이 틀렸으니 ${rc(i)} 는 ${v} 가 아니에요.`
-            : `${rc(i)} 에 ${v} 를 넣으면 ${why}. ${rc(i)} 는 ${v} 가 아니에요. (사람이 쓰는 기술로는 찾기 매우 어려운 단계예요)`,
-        cells: [],
-        area: [],
-        marks: [],
-        links: [],
-        assume: { i, v },
-        trail,
-        bad: badCells,
+      const { why, cells: badCells } = bad;
+      const how = depth === 0 ? '드러난/숨겨진 하나·교차로·부분집합' : '사슬까지 쓰는 기술';
+      return fire(s, [i], b, (elim) => ({
+        id: 'forcing',
+        phases: [
+          { text: `${cell(i)}에 ${J(v, '을', '를')} 넣었다고 가정해 봐요 (주황).`, draw: { assume: { i, v } } },
+          ...(depth < 2
+            ? [
+                { text: `그다음은 ${how}로만 따라가요. 초록 숫자 ${trail.length}개가 차례로 정해져요.`, draw: { trail } },
+                { text: `그런데 ${why}! (빨강) 모순이에요.`, draw: { bad: badCells } },
+              ]
+            : [{ text: `${why}. (사람 기술로는 찾기 매우 어려운 단계예요)`, draw: { bad: badCells } }]),
+          { text: `가정이 틀렸으니 ${J(cell(i), '은', '는')} ${J(v, '이', '가')} 아니에요. 찍기가 아니라 모순을 확인한 추론이에요.`, draw: { elim } },
+        ],
       }));
     }
   }
