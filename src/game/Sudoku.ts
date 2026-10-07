@@ -1,5 +1,6 @@
 import { grade, type Tier } from './Grade';
 import KING_BANK from './kingBank.json';
+import KING_BANK6 from './kingBank6.json';
 
 /** 1차원 격자 (9×9 = 81칸, 6×6 = 36칸). 0 = 빈칸 */
 export type Grid = number[];
@@ -27,17 +28,18 @@ export const HINTS = 3;
 export type Size = 6 | 9;
 export const SIZES: Size[] = [9, 6];
 
-/** 6×6 은 판이 작아 지옥 이상 기술이 필요한 판이 사실상 안 나온다 */
-export const levelsFor = (size: Size): Level[] => (size === 6 ? ['easy', 'medium', 'hard'] : (Object.keys(LEVELS) as Level[]));
+/** 고를 수 있는 난이도 — 6×6 도 지옥(1.6%)·변성대왕(판 은행)까지 다 된다 */
+export const levelsFor = (_size: Size): Level[] => Object.keys(LEVELS) as Level[];
 
 /** 자동 메모: 9×9 는 지옥부터, 6×6 은 고급에서 */
 export const autoNotesFor = (level: Level, size: Size): boolean => LEVELS[level].tier >= 3 || (size === 6 && level === 'hard');
 
 /**
  * 6×6 남길 힌트 수. 6×6 은 97% 가 드러난/숨겨진 하나만으로 풀려서 초급·중급은 힌트 수로 가르고,
- * 고급만 그보다 어려운 기술(교차로·부분집합·윙 …)이 꼭 필요한 판을 고른다
+ * 고급은 그보다 어려운 기술(교차로·부분집합·윙 …)이 꼭 필요한 판, 지옥은 중급 사슬이 꼭 필요한 판(tier 3)을 고른다.
+ * 변성대왕은 판 은행(tier 4 이상 — AIC 가 필요하거나 그걸로도 막힘)에서 꺼낸다
  */
-const CLUES6: Partial<Record<Level, number>> = { easy: 20, medium: 12, hard: 8 };
+const CLUES6: Partial<Record<Level, number>> = { easy: 20, medium: 12, hard: 8, hell: 8 };
 
 /** 판 크기별 칸 관계. grid 길이(36 / 81)로 찾는다 */
 export interface Geo {
@@ -181,6 +183,7 @@ export function mulberry32(seed: number): () => number {
  */
 export function generate(level: Level, rand: () => number = Math.random, size: Size = 9): { puzzle: Grid; solution: Grid } {
   if (level === 'king' && size === 9 && KING_BANK.length) return fromBank(rand);
+  if (level === 'king' && size === 6 && KING_BANK6.length) return fromBank6(rand);
   const N = size * size;
   const target = size === 9 ? LEVELS[level].clues : (CLUES6[level] ?? 10);
   for (;;) {
@@ -197,7 +200,8 @@ export function generate(level: Level, rand: () => number = Math.random, size: S
       else pair.forEach((k, n) => (puzzle[k] = saved[n]));
     }
     const t = grade(puzzle);
-    if (size === 9 ? t === LEVELS[level].tier : level === 'hard' ? t >= 1 : t === 0) return { puzzle, solution };
+    const ok6 = level === 'hell' ? t === 3 : level === 'king' ? t >= 4 : level === 'hard' ? t >= 1 && t <= 2 : t === 0;
+    if (size === 9 ? t === LEVELS[level].tier : ok6) return { puzzle, solution };
   }
 }
 
@@ -218,6 +222,24 @@ function fromBank(rand: () => number): { puzzle: Grid; solution: Grid } {
     for (let k = 0; k < turn; k++) [r, c] = [c, 8 - r];
     if (flip) c = 8 - c;
     puzzle[r * 9 + c] = v ? digits[v - 1] : 0;
+  });
+  return { puzzle, solution: solve(puzzle)! };
+}
+
+/**
+ * 6×6 변성대왕 판 은행(scripts/gen-king6.ts) — 박스가 가로로 길어서 90° 돌리기는 안 되고,
+ * 숫자 바꾸기(6!) × 좌우·상하 뒤집기(4) 로만 변형한다
+ */
+function fromBank6(rand: () => number): { puzzle: Grid; solution: Grid } {
+  const src = fromStr(KING_BANK6[Math.floor(rand() * KING_BANK6.length)]);
+  const digits = shuffle([1, 2, 3, 4, 5, 6], rand);
+  const flipC = rand() < 0.5;
+  const flipR = rand() < 0.5;
+  const puzzle: Grid = new Array(36).fill(0);
+  src.forEach((v, i) => {
+    const r = flipR ? 5 - Math.floor(i / 6) : Math.floor(i / 6);
+    const c = flipC ? 5 - (i % 6) : i % 6;
+    puzzle[r * 6 + c] = v ? digits[v - 1] : 0;
   });
   return { puzzle, solution: solve(puzzle)! };
 }

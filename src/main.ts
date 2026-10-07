@@ -491,6 +491,8 @@ const LEVEL_DESC6: Partial<Record<Level, string>> = {
   easy: '6×6 · 숫자 1~6, 2×3 박스 · 채워진 숫자 20개.',
   medium: '6×6 · 채워진 숫자 12개 안팎 · 드러난/숨겨진 하나만으로 풀려요.',
   hard: '6×6 · 채워진 숫자 10개 안팎 · 교차로·부분집합 같은 기술이 꼭 필요해요. ✨ 자동 메모 가능',
+  hell: '6×6 · W-윙·X-사슬 같은 중급 사슬이 꼭 필요해요. ✨ 자동 메모 가능',
+  king: '6×6 · 교대 추론 사슬(AIC)까지 필요하거나 그걸로도 막혀요. 틀려도 다 채울 때까지 안 알려 줘요. ✨ 자동 메모 가능',
 };
 
 /** 완주 기록 옆 벌점 설명: " · 3:12 + 실수 2 (+20초)" */
@@ -588,7 +590,6 @@ function singleSetup(): void {
     app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('on', (b.dataset.mode === '1') === items));
     app.querySelectorAll<HTMLButtonElement>('[data-size]').forEach((b) => b.classList.toggle('on', Number(b.dataset.size) === size));
     app.querySelectorAll<HTMLButtonElement>('.bot[data-level]').forEach((b) => b.classList.toggle('hidden', !levelsFor(size).includes(b.dataset.level as Level)));
-    app.querySelector('.bots')!.classList.toggle('six', size === 6);
     $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('나 빼고 전원에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : `먼저 끝나도 계속! 기록 = 완주 시간 + 실수당 ${MISTAKE_PENALTY_MS / 1000}초.`;
   };
   app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(

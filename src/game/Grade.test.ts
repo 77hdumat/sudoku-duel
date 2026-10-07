@@ -114,3 +114,12 @@ describe('변성대왕 판 은행', () => {
     }
   }, 60000);
 });
+
+describe('6×6 지옥·변성대왕', () => {
+  it('지옥은 중급 사슬(tier 3), 변성대왕은 AIC 이상(tier 4+)이 꼭 필요하다', () => {
+    for (const k of [1, 2]) {
+      expect(grade(generate('hell', mulberry32(k), 6).puzzle)).toBe(3);
+      expect(grade(generate('king', mulberry32(k), 6).puzzle)).toBeGreaterThanOrEqual(4);
+    }
+  });
+});

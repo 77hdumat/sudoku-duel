@@ -1850,11 +1850,6 @@ textarea {
 .pv.six {
   grid-template-columns: repeat(6, 1fr);
 }
-@media (min-width: 1181px) {
-  .bots.six {
-    grid-template-columns: repeat(3, 200px);
-  }
-}
 
 /* ── 풀이 (변성대왕) */
 .ex-svg {
