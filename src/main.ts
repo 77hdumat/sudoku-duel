@@ -340,7 +340,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         ${o.onGiveUp ? '<button class="ghost" id="giveup">포기</button>' : ''}
         <button class="ghost" id="quit">나가기</button>
       </div>
-      ${o.level === 'king' ? '<p class="no-guess" role="alert">⚠️ 변성대왕 모드에서는 추측하지 마세요. 모든 정답은 추론에 기반해서 풀어 주세요.</p>' : ''}
+      ${o.level === 'king' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요.<br />모든 정답은 추론에 기반해서 풀어 주세요.</p>' : ''}
       <div class="board-wrap"><div class="board" id="board"></div><div class="countdown" id="cd"><b>3</b></div><div class="banner" id="banner"></div></div>
       <div class="pad" id="pad"></div>
     </main>
