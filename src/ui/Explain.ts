@@ -174,15 +174,16 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
     const st = steps[k];
     svg.replaceChildren();
     el('rect', { class: 'ex-dim', x: 0, y: 0, width: n * U, height: n * U }, svg);
-    // 그 시점의 후보를 옅게 (강조한 후보는 위에 다시 그려진다)
+    // 그 시점의 후보를 옅게 (강조한 후보는 위에 다시 그려진다). 하나 찾기(기초)는 후보 없이도 보이니 깔지 않는다 — 초보에겐 복잡하기만 하다
     const pc = el('g', { class: 'ex-pencil' }, svg);
-    st.cands.forEach((m, i) => {
+    if (TECHS[st.id].tier !== '기초')
+      st.cands.forEach((m, i) => {
       for (let d = 1; d <= n; d++)
         if (m & (1 << (d - 1))) {
           const [x, y] = cand(i, d);
           el('text', { x, y }, pc).textContent = String(d);
         }
-    });
+      });
     st.phases.slice(0, ph + 1).forEach((p, j) => p.draw && layer(p.draw, j < ph));
     const temp = st.phases[ph].temp;
     if (temp) layer(temp, false);
@@ -192,14 +193,14 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
     const ds = [...st.phases.slice(0, ph + 1).map((p) => p.draw), st.phases[ph].temp].filter(Boolean) as Draw[];
     const any = (f: (d: Draw) => unknown) => ds.some(f);
     return [
-      any((d) => d.marks?.some((m) => m.tone === 'key')) && '<i class="key"></i>패턴',
-      any((d) => d.marks?.some((m) => m.tone === 'on') || d.ghosts?.length) && '<i class="on"></i>참',
-      any((d) => d.marks?.some((m) => m.tone === 'off')) && '<i class="off"></i>거짓',
-      any((d) => d.links?.some((l) => l.strong)) && '<i class="ln strong"></i>강한 연결',
-      any((d) => d.links?.some((l) => !l.strong)) && '<i class="ln weak"></i>약한 연결',
+      any((d) => d.marks?.some((m) => m.tone === 'key')) && '<i class="key"></i>살펴볼 자리',
+      any((d) => d.marks?.some((m) => m.tone === 'on') || d.ghosts?.length) && '<i class="on"></i>들어감',
+      any((d) => d.marks?.some((m) => m.tone === 'off')) && '<i class="off"></i>안 들어감',
+      any((d) => d.links?.some((l) => l.strong)) && '<i class="ln strong"></i>실선: 한쪽이 아니면 다른 쪽',
+      any((d) => d.links?.some((l) => !l.strong)) && '<i class="ln weak"></i>점선: 둘 다는 불가',
       any((d) => d.assume) && '<i class="off"></i>가정',
       any((d) => d.bad?.length) && '<i class="bad"></i>모순',
-      any((d) => d.elim?.length || d.blocked?.length) && '<i class="x">✕</i>불가',
+      any((d) => d.elim?.length || d.blocked?.length) && '<i class="x">✕</i>못 들어감',
     ].filter(Boolean);
   };
 
