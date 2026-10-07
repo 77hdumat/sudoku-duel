@@ -297,7 +297,7 @@ input:focus {
 }
 .bots {
   display: grid;
-  grid-template-columns: repeat(4, 200px);
+  grid-template-columns: repeat(5, 180px);
   gap: 18px;
 }
 .bot {
@@ -338,6 +338,9 @@ input:focus {
 }
 .bot.hell:hover {
   border-color: #7a1f2b;
+}
+.bot.king:hover {
+  border-color: #c9a227;
 }
 
 /* ── 게임 화면 */
@@ -438,6 +441,39 @@ input:focus {
 }
 .hud .ghost {
   padding: 6px 12px;
+}
+/* 변성대왕: 추측 금지 경고 */
+.no-guess {
+  margin: 0;
+  width: 100%;
+  max-width: var(--size);
+  padding: 8px 14px;
+  border: 2px solid #e5303f;
+  border-radius: 14px;
+  background: rgba(229, 48, 63, 0.1);
+  color: #e5303f;
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+  word-break: keep-all;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .no-guess {
+    animation: none;
+  }
+}
+@media (max-width: 520px) {
+  .no-guess {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
 }
 .board-wrap {
   position: relative;
@@ -1045,6 +1081,10 @@ input {
 .bot.hell {
   --block: #3b2a33;
   color: #fff;
+}
+.bot.king {
+  --block: #1c1418;
+  color: #f2d27a;
 }
 [data-theme='night'] #single,
 [data-theme='night'] .bot.medium {

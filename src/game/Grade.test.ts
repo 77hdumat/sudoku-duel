@@ -29,7 +29,7 @@ describe('logicSolve', () => {
       r.cands.forEach((m, i) => r.grid[i] || expect(m & (1 << (solution[i] - 1))).toBeTruthy());
     }
     // 모든 단계가 실제로 한 번씩은 쓰였는지 (기술 하나가 통째로 안 돌아도 잡히게)
-    expect([...seen].sort()).toEqual([0, 1, 2, 3]);
+    expect([...seen].sort()).toEqual([0, 1, 2, 3, 4]);
   });
 
   it('완성판은 0단계', () => {

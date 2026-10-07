@@ -340,12 +340,13 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         ${o.onGiveUp ? '<button class="ghost" id="giveup">포기</button>' : ''}
         <button class="ghost" id="quit">나가기</button>
       </div>
+      ${o.level === 'king' ? '<p class="no-guess" role="alert">⚠️ 변성대왕 모드에서는 추측하지 마세요. 모든 정답은 추론에 기반해서 풀어 주세요.</p>' : ''}
       <div class="board-wrap"><div class="board" id="board"></div><div class="countdown" id="cd"><b>3</b></div><div class="banner" id="banner"></div></div>
       <div class="pad" id="pad"></div>
     </main>
     ${o.chat ? '<aside class="chat-slot" id="chat-slot"></aside>' : ''}
   </div>`);
-  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, o.level === 'hell', o.hints);
+  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, LEVELS[o.level].tier >= 3, o.hints);
   board.setColor(o.color);
   const timer = $('#timer')!;
   let t0 = 0;
@@ -450,7 +451,8 @@ const LEVEL_DESC: Record<Level, string> = {
   easy: `채워진 숫자 ${LEVELS.easy.clues}개 안팎 · 드러난/숨겨진 하나만으로 풀려요.`,
   medium: `채워진 숫자 ${LEVELS.medium.clues}개 안팎 · 교차로나 부분집합(쌍·삼총사)이 꼭 한 번은 필요해요.`,
   hard: `채워진 숫자 ${LEVELS.hard.clues}개 안팎 · X-윙·황새치·XY-윙 같은 패턴 없이는 막혀요.`,
-  hell: `채워진 숫자 ${LEVELS.hell.clues}개 안팎 · 윙까지 다 써도 막혀서 사슬·컬러링급 추론이 필요해요. ✨ 자동 메모는 지옥에서만!`,
+  hell: `더 지우면 답이 여러 개가 될 때까지 숫자를 깎은 판 · 윙으로도 막혀서 W-윙·핀드 X-윙·X/XY-사슬이 필요해요. ✨ 자동 메모 가능`,
+  king: `더 지우면 답이 여러 개가 될 때까지 숫자를 깎은 판 · 사슬까지 다 써도 막혀요. ALS·메두사·교대 추론 사슬 같은 고급 기술 없이는 못 풀어요. ✨ 자동 메모 가능`,
 };
 
 /** 완주 기록 옆 벌점 설명: " · 3:12 + 실수 2 (+20초)" */

@@ -5,10 +5,12 @@ import { candidates, type Grid } from './Sudoku';
  * 0 기초: 드러난 하나 · 숨겨진 하나
  * 1 초급: 교차로 · 드러난/숨겨진 부분집합 (2~4)
  * 2 초급 물고기 + 중급 윙: X-윙 · 황새치 · 해파리 · XY-윙 · XYZ-윙
- * 3 그 이상: 위 기술로는 막힘 — 사슬·컬러링·ALS 같은 중급 사슬/고급 기술이 있어야 풀린다
+ * 3 중급 사슬: W-윙 · 핀드/사시미 X-윙 · X-사슬(스카이스크레이퍼·2-String Kite·심플 컬러링 포함) · XY-사슬
+ *   — Sudoku.com 극악(Extreme)이 요구하는 패턴이 여기까지
+ * 4 그 이상: 위 기술로는 막힘 — ALS · 3D 메두사 · 교대 추론 사슬 같은 고급/초고급 기술이 있어야 풀린다
  * 쉬운 단계로 진전이 있으면 늘 그쪽을 먼저 쓴다 (사람도 쉬운 것부터 찾으니까).
  */
-export type Tier = 0 | 1 | 2 | 3;
+export type Tier = 0 | 1 | 2 | 3 | 4;
 
 /** 행 9 (0~8) · 열 9 (9~17) · 박스 9 (18~26) */
 const UNITS: number[][] = Array.from({ length: 27 }, (_, u) => {
@@ -153,15 +155,115 @@ function wings(s: State): boolean {
   return false;
 }
 
-/** 기술로 풀 수 있는 데까지 푼 판·남은 후보와 필요했던 단계 (3이면 grid 에 빈칸이 남는다) */
+/** W-윙: 후보가 똑같이 {x,y} 인 두 칸이 x 의 강한 링크(유닛에 x 자리가 둘뿐) 양끝을 하나씩 보면, 두 칸을 다 보는 칸에서 y 를 지운다 */
+function wWing(s: State): boolean {
+  const pairs = [...Array(81).keys()].filter((i) => count(s.c[i]) === 2);
+  for (const [a, b] of combos(pairs, 2)) {
+    if (s.c[a] !== s.c[b] || IS_PEER[a][b]) continue;
+    for (const x of bits(s.c[a]))
+      for (const u of UNITS) {
+        const ends = u.filter((i) => s.c[i] & x);
+        if (ends.length !== 2 || ends.includes(a) || ends.includes(b)) continue;
+        const [p, q] = ends;
+        if (!((IS_PEER[a][p] && IS_PEER[b][q]) || (IS_PEER[a][q] && IS_PEER[b][p]))) continue;
+        if (s.drop(PEERS[a].filter((i) => IS_PEER[b][i]), s.c[a] & ~x)) return true;
+      }
+  }
+  return false;
+}
+
+/**
+ * 핀드/사시미 X-윙: 두 행의 v 자리가 두 열 + 한 박스 안의 '지느러미' 로만 이뤄지면,
+ * 지느러미가 참이든(그 박스) X-윙이 서든(그 열) 꺼지는 칸 = 두 열 ∩ 지느러미 박스 (기준 행 제외) 에서 v 를 지운다 (행·열 바꿔서도)
+ */
+function finnedXWing(s: State): boolean {
+  const boxOf = (i: number) => Math.floor(i / 27) * 3 + Math.floor((i % 9) / 3);
+  for (const bit of bits(0x1ff))
+    for (const [base, cover] of [
+      [UNITS.slice(0, 9), UNITS.slice(9, 18)],
+      [UNITS.slice(9, 18), UNITS.slice(0, 9)],
+    ])
+      for (const [r1, r2] of combos([...Array(9).keys()], 2)) {
+        // 이미 v 가 놓인 줄은 X-윙 다리가 못 된다
+        if (!base[r1].some((i) => s.c[i] & bit) || !base[r2].some((i) => s.c[i] & bit)) continue;
+        const lines = [...base[r1], ...base[r2]];
+        const spots = lines.filter((i) => s.c[i] & bit);
+        for (const [c1, c2] of combos([...Array(9).keys()], 2)) {
+          const covered = [...cover[c1], ...cover[c2]];
+          const fins = spots.filter((i) => !covered.includes(i));
+          if (!fins.length || fins.some((i) => boxOf(i) !== boxOf(fins[0]))) continue;
+          if (s.drop(covered.filter((i) => boxOf(i) === boxOf(fins[0]) && !lines.includes(i)), bit)) return true;
+        }
+      }
+  return false;
+}
+
+/** 후보 노드 (칸, 숫자 비트) */
+type Node = [number, number];
+
+/**
+ * start 가 거짓이라고 두고 강한 링크(거짓→참)·약한 링크(참→거짓)를 번갈아 따라간다.
+ * 참이 되는 노드에 start 와 같은 숫자가 있으면 둘 중 하나는 참이니, 두 칸을 다 보는 칸에서 그 숫자를 지운다.
+ * 같은 노드가 참·거짓 둘 다 되거나 start 자신이 참이 되면 모순 → start 가 답.
+ */
+function chainFrom(s: State, [c0, b0]: Node, strong: (n: Node) => Node[], weak: (n: Node) => Node[]): boolean {
+  const key = ([i, b]: Node) => i * 512 + b;
+  const on = new Set<number>();
+  const off = new Set<number>([key([c0, b0])]);
+  const queue: [Node, boolean][] = [[[c0, b0], false]];
+  const hits: Node[] = [];
+  while (queue.length) {
+    const [n, isOn] = queue.shift()!;
+    for (const m of isOn ? weak(n) : strong(n)) {
+      const set = isOn ? off : on;
+      if (set.has(key(m))) continue;
+      set.add(key(m));
+      queue.push([m, !isOn]);
+      if (!isOn) hits.push(m);
+    }
+  }
+  if ([...on].some((k) => off.has(k))) {
+    s.place(c0, 32 - Math.clz32(b0));
+    return true;
+  }
+  for (const [t, b] of hits) if (b === b0 && t !== c0 && s.drop(PEERS[c0].filter((i) => IS_PEER[t][i]), b0)) return true;
+  return false;
+}
+
+/** X-사슬: 한 숫자만으로, 강한 링크 = 유닛에 그 숫자 자리가 둘뿐, 약한 링크 = 서로 보는 칸 */
+function xChains(s: State): boolean {
+  for (const bit of bits(0x1ff)) {
+    const partner = new Map<number, number[]>();
+    for (const u of UNITS) {
+      const ends = u.filter((i) => s.c[i] & bit);
+      if (ends.length === 2) ends.forEach((i, k) => partner.set(i, [...(partner.get(i) ?? []), ends[1 - k]]));
+    }
+    const strong = ([i]: Node): Node[] => (partner.get(i) ?? []).map((j) => [j, bit]);
+    const weak = ([i]: Node): Node[] => PEERS[i].filter((j) => s.c[j] & bit).map((j) => [j, bit]);
+    for (const i of partner.keys()) if (chainFrom(s, [i, bit], strong, weak)) return true;
+  }
+  return false;
+}
+
+/** XY-사슬: 후보 2개짜리 칸만으로, 강한 링크 = 칸 안의 다른 후보, 약한 링크 = 같은 숫자를 가진 서로 보는 칸 */
+function xyChains(s: State): boolean {
+  const bivalue = (i: number) => count(s.c[i]) === 2;
+  const strong = ([i, b]: Node): Node[] => [[i, s.c[i] & ~b]];
+  const weak = ([i, b]: Node): Node[] => PEERS[i].filter((j) => bivalue(j) && s.c[j] & b).map((j) => [j, b]);
+  for (let i = 0; i < 81; i++) if (bivalue(i)) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak)) return true;
+  return false;
+}
+
+/** 기술로 풀 수 있는 데까지 푼 판·남은 후보와 필요했던 단계 (4면 grid 에 빈칸이 남는다) */
 export function logicSolve(p: Grid): { tier: Tier; grid: Grid; cands: number[] } {
   const s = new State(p);
   let tier: Tier = 0;
   while (s.g.some((v) => !v)) {
     if (singles(s)) continue;
     if (intersections(s) || subsets(s)) tier = Math.max(tier, 1) as Tier;
-    else if (fish(s) || wings(s)) tier = 2;
-    else return { tier: 3, grid: s.g, cands: s.c };
+    else if (fish(s) || wings(s)) tier = Math.max(tier, 2) as Tier;
+    else if (wWing(s) || finnedXWing(s) || xChains(s) || xyChains(s)) tier = 3;
+    else return { tier: 4, grid: s.g, cands: s.c };
   }
   return { tier, grid: s.g, cands: s.c };
 }

@@ -2,7 +2,7 @@ import { grade, type Tier } from './Grade';
 
 /** 81칸 1차원 격자. 0 = 빈칸 */
 export type Grid = number[];
-export type Level = 'easy' | 'medium' | 'hard' | 'hell';
+export type Level = 'easy' | 'medium' | 'hard' | 'hell' | 'king';
 
 /**
  * 남길 힌트 수. 니코리 관례대로 초급일수록 힌트를 많이 준다.
@@ -14,6 +14,8 @@ export const LEVELS: Record<Level, { label: string; clues: number; tier: Tier }>
   medium: { label: '중급', clues: 32, tier: 1 },
   hard: { label: '고급', clues: 26, tier: 2 },
   hell: { label: '지옥', clues: 22, tier: 3 },
+  // 지옥·변성대왕 clues 는 사실상 '바닥까지' — 대칭을 지키며 깎으면 보통 25~30개에서 더 못 지운다
+  king: { label: '변성대왕', clues: 20, tier: 4 },
 };
 
 /** 한 판에 플레이어마다 쓸 수 있는 힌트 수 */
