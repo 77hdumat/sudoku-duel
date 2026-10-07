@@ -51,8 +51,11 @@ describe('Sudoku', () => {
       expect(countSolutions(puzzle)).toBe(1);
       expect(solve(puzzle)).toEqual(solution);
       const clues = puzzle.filter(Boolean).length;
-      expect(clues).toBeGreaterThanOrEqual(LEVELS[level].clues - 1);
-      expect(clues).toBeLessThanOrEqual(LEVELS[level].clues + 8);
+      // 변성대왕은 판 은행에서 꺼내므로 힌트 수 목표와 상관없다 (대신 Grade.test 에서 막히는 지점 수를 본다)
+      if (level !== 'king') {
+        expect(clues).toBeGreaterThanOrEqual(LEVELS[level].clues - 1);
+        expect(clues).toBeLessThanOrEqual(LEVELS[level].clues + 8);
+      }
       expect(puzzle.every((v, i) => !v === !puzzle[80 - i])).toBe(true);
     });
   }

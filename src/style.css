@@ -810,6 +810,14 @@ input:focus {
   background: var(--soft);
   color: var(--ink);
 }
+/* 도구가 6개(변성대왕 싱글)면 단축키 표시를 빼서 글자가 잘리지 않게 */
+.tools:has(> :nth-child(6)) kbd {
+  display: none;
+}
+.tools:has(> :nth-child(6)) .tool {
+  font-size: 14px;
+  letter-spacing: -0.3px;
+}
 .tool.explain-btn {
   background: #2b2233;
   color: #f2d27a;

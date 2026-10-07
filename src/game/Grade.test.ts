@@ -91,3 +91,26 @@ describe('J (조사)', () => {
     expect(J('2번 박스', '을', '를')).toBe('2번 박스를');
   });
 });
+
+describe('변성대왕 판 은행', () => {
+  it('변형한 판도 막히는 지점(포싱)이 여러 번이다', () => {
+    for (const k of [1, 2]) {
+      const { puzzle, solution } = generate('king', mulberry32(k * 977));
+      const grid = puzzle.slice();
+      const ruledOut = new Array(81).fill(0);
+      let forcing = 0;
+      while (grid.some((v) => !v)) {
+        const steps = explainNext(grid, ruledOut);
+        for (const st of steps) {
+          if (st.id === 'forcing') forcing++;
+          for (const e of st.elim) ruledOut[e.i] |= 1 << (e.d - 1);
+        }
+        const p = steps[steps.length - 1].place!;
+        expect(p.v).toBe(solution[p.i]);
+        grid[p.i] = p.v;
+      }
+      // 돌리거나 뒤집으면 기법을 찾는 순서가 달라져 횟수가 조금 바뀐다 (은행엔 3번 이상인 판만 넣었다)
+      expect(forcing).toBeGreaterThanOrEqual(2);
+    }
+  }, 60000);
+});

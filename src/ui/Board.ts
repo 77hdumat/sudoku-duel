@@ -35,6 +35,12 @@ export class Board {
   onRender: (() => void) | null = null;
   /** 풀이 버튼 (변성대왕 싱글) */
   onExplain: (() => void) | null = null;
+  /** 채점 숨김: 판을 다 채워 채점했는데 틀린 칸이 있을 때 (틀린 칸 수) */
+  onChecked: ((wrong: number) => void) | null = null;
+  /** 채점 숨김에서 맞다고 드러난 칸 (채점·힌트·풀이로) — 더는 못 고친다 */
+  private readonly confirmed = new Set<number>();
+  /** 채점 숨김에서 채점 결과 틀린 칸 (고치기 전까지 빨갛게) */
+  private readonly shownWrong = new Set<number>();
 
   private cells: HTMLElement[] = [];
   /** 고른 칸 네 모서리에 붙는 꺾쇠 커서 (칸 사이를 미끄러져 다닌다) */
@@ -61,6 +67,11 @@ export class Board {
     hints = HINTS,
     /** 풀이 버튼 — 변성대왕 싱글에서만, 무제한 */
     explain = false,
+    /**
+     * 채점 숨김 (변성대왕): 넣은 숫자가 맞았는지 바로 알려 주지 않는다 — 두 후보 중 하나를 넣어 보고 빨개지면 바꾸는 '찍고 확인' 을 막는다.
+     * 판을 다 채우면 채점해서 틀린 칸만큼 실수로 센다
+     */
+    private readonly blind = false,
   ) {
     this.hintsLeft = hints;
     this.grid = puzzle.slice();
@@ -133,7 +144,7 @@ export class Board {
 
   get filled(): number {
     let n = 0;
-    for (let i = 0; i < this.G.cells; i++) if (!this.given[i] && this.done(i)) n++;
+    for (let i = 0; i < this.G.cells; i++) if (!this.given[i] && (this.blind ? this.grid[i] : this.done(i))) n++;
     return n;
   }
 
@@ -147,6 +158,11 @@ export class Board {
 
   done(i: number): boolean {
     return this.grid[i] === this.solution[i];
+  }
+
+  /** 더는 못 고치는 칸: 주어진 칸, 그리고 맞힌 칸 (채점 숨김에선 맞다고 드러난 칸만) */
+  private fixed(i: number): boolean {
+    return this.given[i] || (this.blind ? this.confirmed.has(i) : this.done(i));
   }
 
   /** 화면상 칸 중심 (이펙트 위치) */
@@ -168,7 +184,7 @@ export class Board {
 
   input(v: number): void {
     const i = this.sel;
-    if (this.locked || i < 0 || this.given[i] || this.done(i)) return;
+    if (this.locked || i < 0 || this.fixed(i)) return;
     if (this.frozen) return void this.onInput?.('blocked');
     if (this.noteMode && v) {
       if (!this.grid[i]) {
@@ -183,6 +199,7 @@ export class Board {
       if (v) this.onPlace?.(i, v, false);
       return;
     }
+    if (this.blind) return this.place(i, v);
     if (v && v === this.solution[i]) return this.commit(i, false);
     if (this.grid[i] === v) return;
     this.save();
@@ -196,6 +213,38 @@ export class Board {
     this.onChange?.(this.filled, this.mistakes);
   }
 
+  /** 채점 숨김: 숫자를 넣기만 한다 (맞았는지 모름). 다 채우면 채점 */
+  private place(i: number, v: number): void {
+    if (this.grid[i] === v) return;
+    this.save();
+    this.grid[i] = v;
+    this.shownWrong.delete(i);
+    // 넣은 숫자는 같은 줄·박스 메모에서 뺀다 (정답과 상관없이 — 정답을 흘리지 않게)
+    if (v) for (const p of this.G.peers[i]) if (!this.grid[p]) this.notes[p] &= ~(1 << (v - 1));
+    this.onInput?.('select');
+    this.render();
+    this.onChange?.(this.filled, this.mistakes);
+    if (this.grid.every(Boolean)) this.check();
+  }
+
+  /** 채점 숨김: 다 채웠을 때 채점. 맞으면 끝, 틀린 칸은 빨갛게 드러내고 그만큼 실수 */
+  private check(): void {
+    const wrong = this.grid.flatMap((v, i) => (v !== this.solution[i] ? [i] : []));
+    this.grid.forEach((_, i) => !wrong.includes(i) && this.confirmed.add(i));
+    if (!wrong.length) {
+      this.locked = true;
+      this.render();
+      this.onSolved?.();
+      return;
+    }
+    this.mistakes += wrong.length;
+    for (const i of wrong) this.shownWrong.add(i);
+    this.render();
+    this.onChecked?.(wrong.length);
+    this.onWrong?.(wrong[0]);
+    this.onChange?.(this.filled, this.mistakes);
+  }
+
   /** 관전자용 판 상태: grid 칸 수만큼 글자(0 = 빈칸), notes 칸마다 36진수 2 글자 */
   snapshot(): { grid: string; notes: string } {
     return { grid: this.grid.join(''), notes: this.notes.map((n) => n.toString(36).padStart(2, '0')).join('') };
@@ -205,7 +254,7 @@ export class Board {
   useHint(): void {
     if (this.locked || this.hintsLeft <= 0) return void this.onInput?.('blocked');
     let i = this.sel;
-    if (i < 0 || this.given[i] || this.done(i)) {
+    if (i < 0 || this.fixed(i)) {
       const known = this.grid.map((v, k) => (this.done(k) ? v : 0));
       let best = 10;
       i = -1;
@@ -233,7 +282,8 @@ export class Board {
    */
   fillNotes(): void {
     if (this.locked || !this.autoNotes) return;
-    const known = this.grid.map((v, k) => (this.done(k) ? v : 0));
+    // 채점 숨김에선 넣은 숫자를 다 기준으로 (맞은 것만 고르면 정답을 흘린다)
+    const known = this.blind ? this.grid.slice() : this.grid.map((v, k) => (this.done(k) ? v : 0));
     this.save();
     for (let i = 0; i < this.G.cells; i++) if (!this.grid[i]) this.notes[i] = candidates(known, i);
     this.onInput?.('auto');
@@ -253,12 +303,12 @@ export class Board {
     while (this.history.length && this.grid.join() + this.notes.join() === before) {
       const h = this.history.pop()!;
       for (let i = 0; i < this.G.cells; i++) {
-        if (this.done(i)) continue;
+        if (this.fixed(i)) continue;
         this.grid[i] = h.grid[i];
         this.notes[i] = h.notes[i];
       }
-      // 옛 메모라도 지금 놓인 숫자와 겹치는 건 되살리지 않는다
-      pruneNotes(this.grid, this.solution, this.notes);
+      // 옛 메모라도 지금 놓인 숫자와 겹치는 건 되살리지 않는다 (채점 숨김에선 정답을 흘리니 하지 않는다)
+      if (!this.blind) pruneNotes(this.grid, this.solution, this.notes);
     }
     if (this.grid.join() + this.notes.join() === before) return void this.onInput?.('blocked');
     this.onInput?.('note');
@@ -274,7 +324,7 @@ export class Board {
   /** 풀이 한 단계 반영: 지운 후보는 메모에서 빼고, 확정 칸은 힌트처럼 채운다 */
   applyExplain(elim: { i: number; d: number }[], place?: { i: number; v: number }): void {
     for (const { i, d } of elim) if (!this.grid[i]) this.notes[i] &= ~(1 << (d - 1));
-    if (place && !this.done(place.i)) {
+    if (place && !this.fixed(place.i)) {
       this.sel = place.i;
       this.commit(place.i, true);
     } else this.render();
@@ -285,16 +335,21 @@ export class Board {
     const v = this.solution[i];
     this.grid[i] = v;
     if (hint) this.hinted.add(i);
-    pruneNotes(this.grid, this.solution, this.notes);
+    this.confirmed.add(i);
+    this.shownWrong.delete(i);
+    if (this.blind) {
+      for (const p of this.G.peers[i]) if (!this.grid[p]) this.notes[p] &= ~(1 << (v - 1));
+    } else pruneNotes(this.grid, this.solution, this.notes);
     this.pop = i;
-    const units = this.unitsOf(i).filter((u) => u.every((k) => this.done(k)));
+    // 채점 숨김에선 줄이 다 맞았다는 연출도 정답을 흘린다
+    const units = this.blind ? [] : this.unitsOf(i).filter((u) => u.every((k) => this.done(k)));
     this.render();
     this.onCorrect?.(i, hint, units);
     this.onChange?.(this.filled, this.mistakes);
     if (this.solved) {
       this.locked = true;
       this.onSolved?.();
-    }
+    } else if (this.blind && this.grid.every(Boolean)) this.check();
   }
 
   /** 공유판: 방장이 확정한 칸. 이번에 완성된 행·열·박스를 돌려준다 */
@@ -336,7 +391,7 @@ export class Board {
     c.style.transform = `translate(${(this.sel % this.G.n) * 100}%, ${Math.floor(this.sel / this.G.n) * 100}%)`;
     c.classList.add('on');
     c.classList.toggle('note', this.noteMode);
-    c.classList.toggle('lock', this.given[this.sel] || this.done(this.sel));
+    c.classList.toggle('lock', this.fixed(this.sel));
     c.querySelector('b')!.textContent = this.frozen ? '❄' : this.noteMode ? '✎' : '';
   }
 
@@ -365,12 +420,12 @@ export class Board {
 
   render(): void {
     const s = this.sel;
-    const sv = s >= 0 && this.done(s) ? this.grid[s] : 0;
+    const sv = s >= 0 && (this.blind || this.done(s)) ? this.grid[s] : 0;
     const peers = s >= 0 ? new Set(this.G.peers[s]) : null;
     for (let i = 0; i < this.G.cells; i++) {
       const v = this.grid[i];
       const el = this.cells[i];
-      const wrong = v ? v !== this.solution[i] : i === this.flash;
+      const wrong = v ? (this.blind ? this.shownWrong.has(i) : v !== this.solution[i]) : i === this.flash;
       const own = this.owner[i];
       el.className =
         'cell' +
@@ -395,9 +450,9 @@ export class Board {
     this.pop = -1;
 
     const placed = new Array(10).fill(0);
-    this.grid.forEach((v, i) => v === this.solution[i] && placed[v]++);
+    this.grid.forEach((v, i) => (this.blind ? v : v === this.solution[i]) && placed[v]++);
     this.digitBtns.forEach((b, k) => {
-      const left = this.G.n - placed[k + 1];
+      const left = Math.max(0, this.G.n - placed[k + 1]);
       b.disabled = left === 0;
       b.querySelector('small')!.textContent = left ? String(left) : '';
     });

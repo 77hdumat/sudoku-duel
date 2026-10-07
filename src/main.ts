@@ -344,13 +344,13 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         ${o.onGiveUp ? '<button class="ghost" id="giveup">포기</button>' : ''}
         <button class="ghost" id="quit">나가기</button>
       </div>
-      ${o.level === 'king' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요.<br />모든 정답은 추론에 기반해서 풀어 주세요.</p>' : ''}
+      ${o.level === 'king' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요. 틀려도 바로 알려 주지 않아요.<br />모든 정답은 추론에 기반해서 풀어 주세요. 다 채우면 채점해요.</p>' : ''}
       <div class="board-wrap"><div class="board" id="board"></div><div class="countdown" id="cd"><b>3</b></div><div class="banner" id="banner"></div></div>
       <div class="pad" id="pad"></div>
     </main>
     ${o.chat ? '<aside class="chat-slot" id="chat-slot"></aside>' : ''}
   </div>`);
-  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, autoNotesFor(o.level, puzzle.length === 36 ? 6 : 9), o.hints, o.explain);
+  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, autoNotesFor(o.level, puzzle.length === 36 ? 6 : 9), o.hints, o.explain, o.level === 'king' && !o.shared);
   board.setColor(o.color);
   const timer = $('#timer')!;
   let t0 = 0;
@@ -376,6 +376,10 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     },
   };
   board.onChange = (f, m) => o.onProgress?.(f, m);
+  board.onChecked = (n) => {
+    h.banner(`틀린 칸 ${n}개! 빨간 칸을 고쳐 보세요 (실수 +${n})`);
+    setTimeout(() => !h.ended && h.banner(''), 2600);
+  };
   if (o.explain) {
     // 풀이로 지운 후보는 이어서 쓴다 (다음 풀이가 같은 단계를 되풀이하지 않게)
     const ruledOut = new Array(puzzle.length).fill(0);
