@@ -169,8 +169,6 @@ export class Board {
     const i = this.sel;
     if (this.locked || i < 0 || this.given[i] || this.done(i)) return;
     if (this.frozen) return void this.onInput?.('blocked');
-    // 같은 행·열·박스에 이미 맞게 놓인 숫자는 넣지도, 메모하지도 못한다 (숫자패드에서도 빈 블럭)
-    if (v && !(this.allowed(i) & (1 << (v - 1)))) return void this.onInput?.('blocked');
     if (this.noteMode && v) {
       if (!this.grid[i]) {
         this.save();
@@ -200,11 +198,6 @@ export class Board {
   /** 관전자용 판 상태: grid 81 글자(0 = 빈칸), notes 칸마다 36진수 2 글자 */
   snapshot(): { grid: string; notes: string } {
     return { grid: this.grid.join(''), notes: this.notes.map((n) => n.toString(36).padStart(2, '0')).join('') };
-  }
-
-  /** 칸 i 에 넣을 수 있는 숫자 비트마스크 — 맞게 놓인 숫자만 기준 (틀린 숫자는 막지 않는다) */
-  private allowed(i: number): number {
-    return candidates(this.grid.map((v, k) => (this.done(k) ? v : 0)), i);
   }
 
   /** 고른 칸(없거나 이미 맞은 칸이면 가장 쉬운 빈칸)의 정답을 연다 */
@@ -381,11 +374,9 @@ export class Board {
 
     const placed = new Array(10).fill(0);
     this.grid.forEach((v, i) => v === this.solution[i] && placed[v]++);
-    // 고른 칸이 빈칸(또는 틀린 칸)이면 거기 못 들어가는 숫자도 빈 블럭으로
-    const open = s >= 0 && !this.given[s] && !this.done(s) ? this.allowed(s) : 0x1ff;
     this.digitBtns.forEach((b, k) => {
       const left = 9 - placed[k + 1];
-      b.disabled = left === 0 || !(open & (1 << k));
+      b.disabled = left === 0;
       b.querySelector('small')!.textContent = left ? String(left) : '';
     });
     this.noteBtn.classList.toggle('on', this.noteMode);
