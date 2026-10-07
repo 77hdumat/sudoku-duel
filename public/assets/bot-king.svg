@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <path d="M20 26 L100 26 L94 14 L26 14 Z" fill="#14100c" stroke="#c9a227" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="34" y="2" width="52" height="14" rx="3" fill="#14100c" stroke="#c9a227" stroke-width="3"/>
+  <text x="60" y="13" font-size="11" font-weight="900" text-anchor="middle" fill="#c9a227" font-family="serif">王</text>
+  <g stroke="#c9a227" stroke-width="2"><line x1="24" y1="26" x2="24" y2="44"/><line x1="32" y1="26" x2="32" y2="40"/><line x1="88" y1="26" x2="88" y2="40"/><line x1="96" y1="26" x2="96" y2="44"/></g>
+  <g fill="#e5303f"><circle cx="24" cy="46" r="3"/><circle cx="32" cy="42" r="3"/><circle cx="88" cy="42" r="3"/><circle cx="96" cy="46" r="3"/></g>
+  <path d="M18 30 H102 V80 Q102 104 80 106 H40 Q18 104 18 80 Z" fill="#2b3530" stroke="#0c100e" stroke-width="4"/>
+  <path d="M28 40 Q40 34 54 46" stroke="#0c100e" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M92 40 Q80 34 66 46" stroke="#0c100e" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <ellipse cx="42" cy="56" rx="11" ry="7" fill="#fff8d0"/><ellipse cx="78" cy="56" rx="11" ry="7" fill="#fff8d0"/>
+  <circle cx="43" cy="56" r="4" fill="#e5303f"/><circle cx="77" cy="56" r="4" fill="#e5303f"/>
+  <path d="M54 64 L60 72 L66 64" stroke="#0c100e" stroke-width="3" fill="none" stroke-linejoin="round"/>
+  <path d="M36 80 Q60 72 84 80 L80 86 Q60 80 40 86 Z" fill="#0c100e"/>
+  <path d="M38 86 Q60 80 82 86 Q78 118 60 118 Q42 118 38 86 Z" fill="#0c100e"/>
+  <path d="M50 90 Q60 96 70 90" stroke="#e5303f" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>
