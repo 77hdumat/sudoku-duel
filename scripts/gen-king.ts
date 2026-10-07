@@ -1,6 +1,7 @@
 /**
  * 변성대왕 판 은행 만들기 (오프라인). 막히는 지점(포싱이 필요한 단계)이 MIN_FORCING 번 이상인 판만 모은다.
  * 런타임에 만들기엔 너무 느려서(판 하나에 수 초) 미리 만들어 src/game/kingBank.json 에 넣는다.
+ * 숫자 바꾸기·돌리기에 따라 기법을 찾는 순서가 달라져 횟수가 줄 수 있어, 은행엔 여러 변형에서도 2번 이상 막히는 판만 남겼다.
  *   npx vite-node scripts/gen-king.ts <개수> <시드> > out.txt
  */
 import { explainNext } from '../src/game/Grade';
