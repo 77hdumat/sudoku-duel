@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { UiBlocks } from './Blocks';
+import { Fire } from './Fire';
 
 /**
  * three.js 두 겹:
@@ -376,7 +377,12 @@ export class Fx {
   // ───────────── 이펙트 API (화면 픽셀 좌표) ─────────────
 
   /** 별·하트·구슬이 사방으로 톡 */
-  burst(x: number, y: number, colors: string | string[], o: { count?: number; power?: number; size?: number; shapes?: number[] } = {}): void {
+  burst(
+    x: number,
+    y: number,
+    colors: string | string[],
+    o: { count?: number; power?: number; size?: number; shapes?: number[]; gravity?: number; life?: number } = {},
+  ): void {
     if (!this.ok) return;
     const list = Array.isArray(colors) ? colors : [colors];
     const count = Math.round((o.count ?? 18) * (reduceMotion ? 0.3 : 1));
@@ -396,13 +402,45 @@ export class Fx {
         wy: (Math.random() - 0.5) * 14,
         size: (o.size ?? 8) * (0.6 + Math.random() * 0.8),
         t: 0,
-        life: 0.7 + Math.random() * 0.5,
-        gravity: 700,
+        life: (o.life ?? 0.7) + Math.random() * 0.5,
+        gravity: o.gravity ?? 700,
         drag: 2.2,
         flutter: 0,
         color: new THREE.Color(list[i % list.length]),
       });
     }
+  }
+
+  /**
+   * 볼륨 불꽃 (Fire.ts). (x, y) 는 불꽃 밑동, w·h 는 불꽃 폭·높이(px).
+   * 확 솟았다가 사그라든다. 변성대왕에서 숫자를 넣을 때
+   */
+  fire(x: number, y: number, w: number, h: number, life = 1.3): void {
+    if (!this.ok) return;
+    const f = new Fire();
+    const t0 = Math.random() * 10;
+    this.fxScene.add(f);
+    this.tweens.push({
+      t: 0,
+      life,
+      step: (k) => {
+        const grow = Math.min(1, k / 0.15);
+        const hh = h * grow * (k > 0.7 ? 1 - (k - 0.7) * 0.8 : 1);
+        f.scale.set(w * (0.7 + 0.3 * grow), Math.max(1, hh), w);
+        // 상자 아래쪽이 불꽃 밑동이라 위로 반 칸 올린다
+        f.position.set(x, -y + hh / 2, 250);
+        f.update(t0 + k * life * 1.6, k > 0.55 ? (1 - k) / 0.45 : 1);
+      },
+      done: () => {
+        this.fxScene.remove(f);
+        f.dispose();
+      },
+    });
+  }
+
+  /** 불티: 작은 불씨가 위로 흩날리며 떠오른다 */
+  embers(x: number, y: number, count = 14): void {
+    this.burst(x, y, ['#ff4d1a', '#ff8a1f', '#ffc04a', '#ffe8a3'], { count, power: 120, size: 4, shapes: [2], gravity: -260, life: 0.9 });
   }
 
   /** 화면 위에서 색종이가 팔랑팔랑 */

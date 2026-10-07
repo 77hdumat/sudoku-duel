@@ -35,6 +35,8 @@ export class Board {
   onRender: (() => void) | null = null;
   /** 풀이 버튼 (변성대왕 싱글) */
   onExplain: (() => void) | null = null;
+  /** 채점 숨김: 숫자를 넣을 때마다 (맞았는지와 상관없이 — 이펙트용) */
+  onPut: ((i: number) => void) | null = null;
   /** 채점 숨김: 판을 다 채워 채점했는데 틀린 칸이 있을 때 (틀린 칸 수) */
   onChecked: ((wrong: number) => void) | null = null;
   /** 채점 숨김에서 맞다고 드러난 칸 (채점·힌트·풀이로) — 더는 못 고친다 */
@@ -221,6 +223,7 @@ export class Board {
     this.shownWrong.delete(i);
     // 넣은 숫자는 같은 줄·박스 메모에서 뺀다 (정답과 상관없이 — 정답을 흘리지 않게)
     if (v) for (const p of this.G.peers[i]) if (!this.grid[p]) this.notes[p] &= ~(1 << (v - 1));
+    if (v) this.onPut?.(i);
     this.onInput?.('select');
     this.render();
     this.onChange?.(this.filled, this.mistakes);

@@ -2222,14 +2222,41 @@ textarea {
   grid-auto-flow: row;
   grid-template-columns: 1fr 1fr 1.2fr 1fr 1.6fr;
 }
-/* 데스크톱: 풀이 중엔 판을 조금 줄여 설명 패널 자리를 만든다 (오버레이는 viewBox 라 같이 줄어든다) */
-@media (min-width: 901px) {
-  .center.explaining {
-    --size: min(52vh, 560px);
-  }
+/* 데스크톱: 설명 패널은 왼쪽 패널(순위표 자리)에 — 판은 그대로 */
+.side.explaining > :not(.explain) {
+  display: none;
+}
+.side .explain {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+.side .ex-scroll {
+  max-height: 46vh;
+}
+/* 좁은 화면·왼쪽 패널: 위 줄 이전 · 다음, 아래 줄 카드 · 바로 기입 · 닫기 */
+.side .ex-nav.ex-five {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-areas: 'prev prev next next next next' 'card card skip skip close close';
+}
+.side .ex-five [data-x='prev'] {
+  grid-area: prev;
+}
+.side .ex-five [data-x='next'] {
+  grid-area: next;
+}
+.side .ex-five [data-x='card'] {
+  grid-area: card;
+}
+.side .ex-five [data-x='skip'] {
+  grid-area: skip;
+}
+.side .ex-five [data-x='close'] {
+  grid-area: close;
 }
 @media (max-width: 520px) {
-  /* 좁은 화면: 위 줄 이전 · 다음, 아래 줄 카드 · 바로 기입 · 닫기 */
   .ex-nav.ex-five {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     grid-template-areas: 'prev prev next next next next' 'card card skip skip close close';
@@ -2358,4 +2385,78 @@ textarea {
   stroke: #e5303f;
   stroke-width: 3;
   stroke-linecap: round;
+}
+
+/* ── 변성대왕: 지옥 테마 — 검붉은 판, 용암처럼 숨 쉬는 테두리, 화면 아래에서 올라오는 붉은 빛 */
+.play.king::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 90% 55% at 50% 105%, rgba(255, 70, 20, 0.42), transparent 70%),
+    radial-gradient(ellipse at 50% 40%, transparent 35%, rgba(40, 6, 8, 0.55) 100%);
+  animation: hell-flicker 2.4s ease-in-out infinite alternate;
+}
+.play.king > * {
+  position: relative;
+  z-index: 1;
+}
+.play.king .board-wrap {
+  --panel: #1c0c0e;
+  --soft: #2b1215;
+  --line: #4d1d23;
+  --thick: #b3222f;
+  --ink: #f6e2c8;
+  --user: #ffb547;
+  --muted: #c08a7c;
+  --accent: #ff5a2a;
+  --accent-ink: #fff;
+  --peer: rgba(255, 70, 30, 0.1);
+  --same: rgba(255, 140, 40, 0.28);
+  --sel: rgba(255, 90, 40, 0.3);
+  --wrong: #ff4d6a;
+  --wrong-bg: rgba(255, 40, 70, 0.22);
+}
+.play.king .board {
+  background: radial-gradient(circle at 50% 125%, #5a1013 0%, #1c0c0e 58%, #120708 100%);
+  border-color: #b3222f;
+  box-shadow:
+    0 0 0 2px #2b0a0d,
+    0 0 26px rgba(255, 70, 20, 0.55),
+    0 0 70px rgba(255, 40, 10, 0.25);
+  animation: hell-breathe 3.2s ease-in-out infinite;
+}
+.play.king .cell.given {
+  color: #f6e2c8;
+  text-shadow: 0 0 6px rgba(255, 120, 40, 0.35);
+}
+.play.king .cell.user {
+  color: #ffb547;
+  text-shadow:
+    0 0 8px rgba(255, 120, 30, 0.9),
+    0 0 18px rgba(255, 60, 10, 0.5);
+}
+.play.king .notes i {
+  color: #d39a7c;
+}
+@keyframes hell-breathe {
+  50% {
+    box-shadow:
+      0 0 0 2px #2b0a0d,
+      0 0 40px rgba(255, 90, 20, 0.8),
+      0 0 110px rgba(255, 40, 10, 0.4);
+  }
+}
+@keyframes hell-flicker {
+  to {
+    opacity: 0.75;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .play.king .board,
+  .play.king::before {
+    animation: none;
+  }
 }

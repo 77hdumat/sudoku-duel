@@ -7,15 +7,23 @@ export interface Entry {
   gaveUp?: boolean;
   /** 실수 횟수 — 기록이 같으면 적은 쪽이 앞선다 */
   mistakes?: number;
+  /** 실수 하나에 더해지는 시간 (난이도마다 다르다, 없으면 MISTAKE_PENALTY_MS) */
+  penaltyMs?: number;
 }
 
 const fewer = (a: Entry, b: Entry) => (a.mistakes ?? 0) - (b.mistakes ?? 0);
 
 /** 레이스 계열: 실수 하나에 더해지는 시간 */
 export const MISTAKE_PENALTY_MS = 10_000;
+/** 지옥: 추론 없이 찍는 사람이 많아서 실수 하나에 7분 */
+export const HELL_PENALTY_MS = 7 * 60_000;
+
+export const penaltyFor = (level: string): number => (level === 'hell' ? HELL_PENALTY_MS : MISTAKE_PENALTY_MS);
+/** '10초' · '7분' */
+export const penaltyText = (ms: number): string => (ms >= 60_000 && ms % 60_000 === 0 ? `${ms / 60_000}분` : `${Math.round(ms / 1000)}초`);
 
 /** 최종 기록 = 완주 시간 + 실수 벌점 (못 끝냈으면 null) */
-export const finalMs = (e: Entry): number | null => (e.ms == null ? null : e.ms + (e.mistakes ?? 0) * MISTAKE_PENALTY_MS);
+export const finalMs = (e: Entry): number | null => (e.ms == null ? null : e.ms + (e.mistakes ?? 0) * (e.penaltyMs ?? MISTAKE_PENALTY_MS));
 
 /** 레이스: 완주한 사람은 최종 기록(시간 + 실수 벌점)순, 못 끝낸 사람은 그 뒤에 채운 칸 많은 순. 같으면 실수 적은 순 */
 export function rankRace<T extends Entry>(es: T[]): T[] {

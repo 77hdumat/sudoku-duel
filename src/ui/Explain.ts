@@ -73,8 +73,16 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
   const panel = document.createElement('section');
   panel.className = 'explain';
   panel.setAttribute('aria-live', 'polite');
-  wrap.after(panel);
-  center.classList.add('explaining');
+  // 넓은 화면은 왼쪽 패널(순위표 자리)에, 좁은 화면은 숫자패드 자리에 — 판 크기·위치는 그대로 둔다
+  // (판을 줄이면 풀이 그림과 실제 칸 크기가 달라 읽기 어렵고, 닫을 때 불꽃 같은 이펙트가 엉뚱한 곳에 남는다)
+  const side = matchMedia('(min-width: 901px)').matches ? document.querySelector<HTMLElement>('.play .side') : null;
+  if (side) {
+    side.prepend(panel);
+    side.classList.add('explaining');
+  } else {
+    wrap.after(panel);
+    center.classList.add('explaining');
+  }
 
   const rows = n === 6 ? 2 : 3;
   const xy = (i: number) => [(i % n) * U, Math.floor(i / n) * U];
@@ -95,10 +103,12 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
     board.remove();
     panel.remove();
     center.classList.remove('explaining');
+    side?.classList.remove('explaining');
   };
+  // 기입은 패널을 닫아 화면 배치가 돌아온 뒤에 — 불꽃 같은 칸 이펙트가 제자리에 터지게
   const finish = () => {
-    for (; k < steps.length; k++) apply(steps[k]);
     close();
+    for (; k < steps.length; k++) apply(steps[k]);
     done();
   };
 
@@ -265,14 +275,15 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
     on('next', () => {
       if (!lastPh) ph++;
       else {
-        apply(steps[k]);
         k++;
         ph = 0;
         if (k >= steps.length) {
           close();
+          apply(steps[k - 1]);
           done();
           return;
         }
+        apply(steps[k - 1]);
         enter();
       }
       render();
@@ -284,11 +295,8 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
     on('skip', finish);
     // 이미 넘긴 기법까지 반영하고 닫는다. 지금 기법도 마지막 서술(결론)까지 봤으면 그것도 반영
     on('close', () => {
-      if (lastPh) {
-        apply(steps[k]);
-        k++;
-      }
       close();
+      if (lastPh) apply(steps[k++]);
       done();
     });
   };
