@@ -1,17 +1,4 @@
-import { bitCount, candidates, HINTS, PEERS, pruneNotes, type Grid } from '../game/Sudoku';
-
-/** 칸 i 가 속한 행·열·박스의 칸 목록 */
-function unitsOf(i: number): number[][] {
-  const r = Math.floor(i / 9);
-  const c = i % 9;
-  const br = r - (r % 3);
-  const bc = c - (c % 3);
-  return [
-    Array.from({ length: 9 }, (_, k) => r * 9 + k),
-    Array.from({ length: 9 }, (_, k) => k * 9 + c),
-    Array.from({ length: 9 }, (_, k) => (br + Math.floor(k / 3)) * 9 + bc + (k % 3)),
-  ];
-}
+import { bitCount, candidates, geo, HINTS, pruneNotes, type Geo, type Grid } from '../game/Sudoku';
 
 /**
  * 플레이어 보드: 칸 선택·숫자/메모 입력·힌트·키보드·숫자패드.
@@ -23,9 +10,11 @@ function unitsOf(i: number): number[][] {
 export class Board {
   readonly grid: Grid;
   readonly given: boolean[];
-  readonly notes: number[] = new Array(81).fill(0);
+  readonly notes: number[];
   /** 점령형: 칸을 가져간 플레이어 id (-1 = 없음) */
-  readonly owner: number[] = new Array(81).fill(-1);
+  readonly owner: number[];
+  /** 판 크기 (9×9 / 6×6) */
+  private readonly G: Geo;
   readonly hinted = new Set<number>();
   sel = -1;
   noteMode = false;
@@ -65,19 +54,25 @@ export class Board {
     puzzle: Grid,
     private readonly solution: Grid,
     private readonly shared = false,
-    /** 고급 전용: 빈칸마다 지금 가능한 후보를 메모로 한 번에 채우는 버튼 */
+    /** 지옥 이상(6×6 은 고급): 빈칸마다 지금 가능한 후보를 메모로 한 번에 채우는 버튼 */
     private readonly autoNotes = false,
     hints = HINTS,
   ) {
     this.hintsLeft = hints;
     this.grid = puzzle.slice();
     this.given = puzzle.map(Boolean);
+    this.G = geo(puzzle.length);
+    const n = this.G.n;
+    this.notes = new Array(this.G.cells).fill(0);
+    this.owner = new Array(this.G.cells).fill(-1);
+    boardEl.classList.toggle('six', n === 6);
+    padEl.classList.toggle('six', n === 6);
 
-    for (let i = 0; i < 81; i++) {
+    for (let i = 0; i < this.G.cells; i++) {
       const d = document.createElement('div');
       d.className = 'cell';
-      d.dataset.r = String(Math.floor(i / 9));
-      d.dataset.c = String(i % 9);
+      d.dataset.r = String(Math.floor(i / n));
+      d.dataset.c = String(i % n);
       d.addEventListener('pointerdown', () => {
         this.select(i);
         this.onInput?.('select');
@@ -91,7 +86,7 @@ export class Board {
     this.cursor.innerHTML = '<i></i><i></i><i></i><i></i><b></b>';
     boardEl.appendChild(this.cursor);
 
-    for (let v = 1; v <= 9; v++) {
+    for (let v = 1; v <= n; v++) {
       const b = document.createElement('button');
       b.className = 'digit';
       b.innerHTML = `<span>${v}</span><small></small>`;
@@ -132,7 +127,7 @@ export class Board {
 
   get filled(): number {
     let n = 0;
-    for (let i = 0; i < 81; i++) if (!this.given[i] && this.done(i)) n++;
+    for (let i = 0; i < this.G.cells; i++) if (!this.given[i] && this.done(i)) n++;
     return n;
   }
 
@@ -195,7 +190,7 @@ export class Board {
     this.onChange?.(this.filled, this.mistakes);
   }
 
-  /** 관전자용 판 상태: grid 81 글자(0 = 빈칸), notes 칸마다 36진수 2 글자 */
+  /** 관전자용 판 상태: grid 칸 수만큼 글자(0 = 빈칸), notes 칸마다 36진수 2 글자 */
   snapshot(): { grid: string; notes: string } {
     return { grid: this.grid.join(''), notes: this.notes.map((n) => n.toString(36).padStart(2, '0')).join('') };
   }
@@ -208,7 +203,7 @@ export class Board {
       const known = this.grid.map((v, k) => (this.done(k) ? v : 0));
       let best = 10;
       i = -1;
-      for (let k = 0; k < 81; k++) {
+      for (let k = 0; k < this.G.cells; k++) {
         if (known[k]) continue;
         const n = bitCount(candidates(known, k));
         if (n < best) {
@@ -234,7 +229,7 @@ export class Board {
     if (this.locked || !this.autoNotes) return;
     const known = this.grid.map((v, k) => (this.done(k) ? v : 0));
     this.save();
-    for (let i = 0; i < 81; i++) if (!this.grid[i]) this.notes[i] = candidates(known, i);
+    for (let i = 0; i < this.G.cells; i++) if (!this.grid[i]) this.notes[i] = candidates(known, i);
     this.onInput?.('auto');
     this.render();
   }
@@ -251,7 +246,7 @@ export class Board {
     // 그 사이 맞힌 칸 때문에 되돌려도 달라질 게 없는 단계는 건너뛴다
     while (this.history.length && this.grid.join() + this.notes.join() === before) {
       const h = this.history.pop()!;
-      for (let i = 0; i < 81; i++) {
+      for (let i = 0; i < this.G.cells; i++) {
         if (this.done(i)) continue;
         this.grid[i] = h.grid[i];
         this.notes[i] = h.notes[i];
@@ -272,7 +267,7 @@ export class Board {
     if (hint) this.hinted.add(i);
     pruneNotes(this.grid, this.solution, this.notes);
     this.pop = i;
-    const units = unitsOf(i).filter((u) => u.every((k) => this.done(k)));
+    const units = this.unitsOf(i).filter((u) => u.every((k) => this.done(k)));
     this.render();
     this.onCorrect?.(i, hint, units);
     this.onChange?.(this.filled, this.mistakes);
@@ -292,7 +287,12 @@ export class Board {
     pruneNotes(this.grid, this.solution, this.notes);
     this.pop = i;
     this.render();
-    return unitsOf(i).filter((u) => u.every((k) => this.done(k)));
+    return this.unitsOf(i).filter((u) => u.every((k) => this.done(k)));
+  }
+
+  /** 칸 i 가 속한 행·열·박스의 칸 목록 */
+  private unitsOf(i: number): number[][] {
+    return this.G.units.filter((u) => u.includes(i));
   }
 
   /** 공유판: 내 오답 — 정지가 풀릴 때까지 칸에 ✕ 를 띄우고 입력을 막는다 */
@@ -313,7 +313,7 @@ export class Board {
     const c = this.cursor;
     if (this.sel < 0) return void c.classList.remove('on');
     // 칸 크기 단위 이동이라 창 크기가 바뀌어도 맞는다
-    c.style.transform = `translate(${(this.sel % 9) * 100}%, ${Math.floor(this.sel / 9) * 100}%)`;
+    c.style.transform = `translate(${(this.sel % this.G.n) * 100}%, ${Math.floor(this.sel / this.G.n) * 100}%)`;
     c.classList.add('on');
     c.classList.toggle('note', this.noteMode);
     c.classList.toggle('lock', this.given[this.sel] || this.done(this.sel));
@@ -324,18 +324,19 @@ export class Board {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     const k = e.key;
-    if (/^[1-9]$/.test(k)) this.input(Number(k));
+    if (/^[1-9]$/.test(k) && Number(k) <= this.G.n) this.input(Number(k));
     else if (k === 'Backspace' || k === 'Delete' || k === '0') this.input(0);
     else if (k === 'n' || k === 'N' || k === 'ㅜ') this.toggleNotes();
     else if (k === 'h' || k === 'H' || k === 'ㅗ') this.useHint();
     else if (k === 'z' || k === 'Z' || k === 'ㅋ') this.undo();
     else if ((k === 'a' || k === 'A' || k === 'ㅁ') && this.autoNotes) this.fillNotes();
     else if (k.startsWith('Arrow')) {
-      const i = this.sel < 0 ? 40 : this.sel;
-      const r = Math.floor(i / 9);
-      const c = i % 9;
+      const n = this.G.n;
+      const i = this.sel < 0 ? Math.floor(this.G.cells / 2) : this.sel;
+      const r = Math.floor(i / n);
+      const c = i % n;
       const [dr, dc] = k === 'ArrowUp' ? [-1, 0] : k === 'ArrowDown' ? [1, 0] : k === 'ArrowLeft' ? [0, -1] : [0, 1];
-      this.select(((r + dr + 9) % 9) * 9 + ((c + dc + 9) % 9));
+      this.select(((r + dr + n) % n) * n + ((c + dc + n) % n));
       this.onInput?.('select');
     } else return;
     e.preventDefault();
@@ -344,8 +345,8 @@ export class Board {
   render(): void {
     const s = this.sel;
     const sv = s >= 0 && this.done(s) ? this.grid[s] : 0;
-    const peers = s >= 0 ? new Set(PEERS[s]) : null;
-    for (let i = 0; i < 81; i++) {
+    const peers = s >= 0 ? new Set(this.G.peers[s]) : null;
+    for (let i = 0; i < this.G.cells; i++) {
       const v = this.grid[i];
       const el = this.cells[i];
       const wrong = v ? v !== this.solution[i] : i === this.flash;
@@ -362,7 +363,7 @@ export class Board {
       if (v) el.innerHTML = `<span class="v${i === this.pop ? ' pop' : ''}">${v}</span>`;
       else if (this.notes[i]) {
         let h = '<div class="notes">';
-        for (let n = 1; n <= 9; n++) {
+        for (let n = 1; n <= this.G.n; n++) {
           const on = this.notes[i] & (1 << (n - 1));
           // 고른 칸의 숫자와 같은 메모 숫자도 같이 강조
           h += `<i${on && n === sv ? ' class="same"' : ''}>${on ? n : ''}</i>`;
@@ -375,7 +376,7 @@ export class Board {
     const placed = new Array(10).fill(0);
     this.grid.forEach((v, i) => v === this.solution[i] && placed[v]++);
     this.digitBtns.forEach((b, k) => {
-      const left = 9 - placed[k + 1];
+      const left = this.G.n - placed[k + 1];
       b.disabled = left === 0;
       b.querySelector('small')!.textContent = left ? String(left) : '';
     });

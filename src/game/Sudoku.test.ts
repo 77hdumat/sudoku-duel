@@ -1,15 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { AI_PROFILES, AiSolver } from './Ai';
-import { candidates, countSolutions, fromStr, generate, LEVELS, mulberry32, PEERS, pruneNotes, solve, toStr, type Level } from './Sudoku';
+import { candidates, countSolutions, fromStr, generate, geo, LEVELS, levelsFor, mulberry32, pruneNotes, solve, toStr, type Level } from './Sudoku';
+
+const PEERS = geo(81).peers;
 
 function valid(g: number[]): boolean {
-  return g.every((v, i) => v >= 1 && v <= 9 && PEERS[i].every((p) => g[p] !== v));
+  const G = geo(g.length);
+  return g.every((v, i) => v >= 1 && v <= G.n && G.peers[i].every((p) => g[p] !== v));
 }
 
 describe('Sudoku', () => {
-  it('PEERS 는 칸마다 20개', () => {
+  it('PEERS 는 칸마다 20개 (6×6 은 12개)', () => {
     expect(PEERS.every((p) => p.length === 20)).toBe(true);
+    expect(geo(36).peers.every((p) => p.length === 12)).toBe(true);
   });
+
+  it('6×6 박스는 가로 3 × 세로 2', () => {
+    expect(geo(36).units[12]).toEqual([0, 1, 2, 6, 7, 8]);
+    expect(geo(36).units[13]).toEqual([3, 4, 5, 9, 10, 11]);
+  });
+
+  for (const level of levelsFor(6))
+    it(`6×6 ${level}: 유일해이고 정답과 일치하며 대칭이다`, () => {
+      const { puzzle, solution } = generate(level, mulberry32(42), 6);
+      expect(puzzle.length).toBe(36);
+      expect(valid(solution)).toBe(true);
+      expect(puzzle.every((v, i) => !v || v === solution[i])).toBe(true);
+      expect(countSolutions(puzzle)).toBe(1);
+      expect(puzzle.every((v, i) => !v === !puzzle[35 - i])).toBe(true);
+      expect(fromStr(toStr(puzzle))).toEqual(puzzle);
+    });
 
   it('빈 판은 해가 여러 개', () => {
     expect(countSolutions(new Array(81).fill(0))).toBe(2);

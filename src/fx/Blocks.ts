@@ -138,7 +138,7 @@ export class UiBlocks {
 
     const theme = document.documentElement.dataset.theme ?? '';
     const focus = el.matches(':focus-visible');
-    const key = `${theme}|${el.className}|${el.disabled}|${focus}|${el.textContent}|${el.querySelector('img')?.getBoundingClientRect().top ?? ''}`;
+    const key = `${theme}|${el.className}|${el.disabled}|${focus}|${el.textContent}|${el.querySelector('img')?.getBoundingClientRect().top ?? ''}|${el.querySelector('img')?.src ?? ''}`;
     if (key !== b.key || this.repaintAll) {
       b.key = key;
       this.paint(b, r);

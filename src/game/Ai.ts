@@ -78,7 +78,7 @@ export class AiSolver {
     }
     let best = -1;
     let bestCnt = 10;
-    for (let i = 0; i < 81; i++) {
+    for (let i = 0; i < this.grid.length; i++) {
       if (this.grid[i]) continue;
       const n = bitCount(candidates(this.grid, i));
       if (n < bestCnt) {
@@ -91,7 +91,8 @@ export class AiSolver {
     const stuck = rand() < STALL_P ? p.stall * (0.5 + rand()) : 0;
     if (rand() < p.mistake) {
       const sol = this.solution[best];
-      this.grid[best] = ((sol + Math.floor(rand() * 8)) % 9) + 1;
+      const n = Math.sqrt(this.grid.length);
+      this.grid[best] = ((sol + Math.floor(rand() * (n - 1))) % n) + 1;
       this.mistakes++;
       this.wrongCell = best;
       this.wait += think * 0.6;

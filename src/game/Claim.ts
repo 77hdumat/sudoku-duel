@@ -50,7 +50,7 @@ export class ClaimJudge {
   private easiest(): number {
     let best = -1;
     let bestN = 10;
-    for (let i = 0; i < 81; i++) {
+    for (let i = 0; i < this.grid.length; i++) {
       if (this.grid[i]) continue;
       const n = bitCount(candidates(this.grid, i));
       if (n < bestN) {

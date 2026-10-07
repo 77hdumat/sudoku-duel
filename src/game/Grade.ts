@@ -1,4 +1,4 @@
-import { candidates, type Grid } from './Sudoku';
+import { candidates, geo, type Geo, type Grid } from './Sudoku';
 
 /**
  * 사람이 쓰는 기술로 판을 풀어 보고, 끝내려면 꼭 필요했던 가장 어려운 단계를 매긴다 (나무위키 스도쿠/공략법 분류).
@@ -13,20 +13,17 @@ import { candidates, type Grid } from './Sudoku';
  */
 export type Tier = 0 | 1 | 2 | 3 | 4 | 5;
 
-/** 행 9 (0~8) · 열 9 (9~17) · 박스 9 (18~26) */
-const UNITS: number[][] = Array.from({ length: 27 }, (_, u) => {
-  const k = u % 9;
-  return Array.from({ length: 9 }, (_, j) =>
-    u < 9 ? k * 9 + j : u < 18 ? j * 9 + k : (Math.floor(k / 3) * 3 + Math.floor(j / 3)) * 9 + (k % 3) * 3 + (j % 3),
-  );
-});
-// Sudoku.ts 와 서로 import 하므로 PEERS 를 가져다 쓰지 않고 여기서 만든다 (모듈 초기화 순서)
-const PEERS: number[][] = Array.from({ length: 81 }, (_, i) => [...new Set(UNITS.filter((u) => u.includes(i)).flat())].filter((p) => p !== i));
-const IS_PEER: boolean[][] = PEERS.map((ps) => {
-  const row = new Array(81).fill(false);
-  for (const p of ps) row[p] = true;
-  return row;
-});
+// 지금 채점 중인 판의 크기별 칸 관계. logicSolve 가 시작할 때 맞춰 둔다 (채점은 동기라 한 번에 한 판)
+let UNITS: number[][] = [];
+let PEERS: number[][] = [];
+let IS_PEER: boolean[][] = [];
+let BOX: number[] = [];
+let ALL = 0;
+let N = 0;
+let CELLS = 0;
+function use(G: Geo): void {
+  ({ units: UNITS, peers: PEERS, isPeer: IS_PEER, boxOf: BOX, all: ALL, n: N, cells: CELLS } = G);
+}
 
 const bits = (m: number): number[] => [...Array(9).keys()].filter((b) => m & (1 << b)).map((b) => 1 << b);
 const count = (m: number): number => bits(m).length;
@@ -39,7 +36,9 @@ function* combos<T>(arr: T[], n: number, from = 0): Generator<T[]> {
 class State {
   readonly g: Grid;
   readonly c: number[];
+  readonly G: Geo;
   constructor(p: Grid) {
+    this.G = geo(p.length);
     this.g = p.slice();
     this.c = this.g.map((v, i) => (v ? 0 : candidates(this.g, i)));
   }
@@ -61,13 +60,13 @@ class State {
 }
 
 function singles(s: State): boolean {
-  for (let i = 0; i < 81; i++)
+  for (let i = 0; i < CELLS; i++)
     if (s.c[i] && count(s.c[i]) === 1) {
       s.place(i, 32 - Math.clz32(s.c[i]));
       return true;
     }
   for (const u of UNITS)
-    for (let v = 1; v <= 9; v++) {
+    for (let v = 1; v <= N; v++) {
       const spots = u.filter((i) => s.c[i] & (1 << (v - 1)));
       if (spots.length === 1) {
         s.place(spots[0], v);
@@ -79,11 +78,11 @@ function singles(s: State): boolean {
 
 /** 교차로: 한 유닛 안의 숫자 v 자리가 전부 다른 유닛과 겹치면, 그 다른 유닛의 나머지 칸에서 v 를 지운다 */
 function intersections(s: State): boolean {
-  for (const box of UNITS.slice(18))
-    for (const line of UNITS.slice(0, 18)) {
+  for (const box of UNITS.slice(2 * N))
+    for (const line of UNITS.slice(0, 2 * N)) {
       const shared = box.filter((i) => line.includes(i));
       if (!shared.length) continue;
-      for (const bit of bits(0x1ff))
+      for (const bit of bits(ALL))
         for (const [a, b] of [
           [box, line],
           [line, box],
@@ -109,7 +108,7 @@ function subsets(s: State): boolean {
       for (const ds of combos(digits, n)) {
         const m = ds.reduce((a, b) => a | b, 0);
         const cells = empty.filter((i) => s.c[i] & m);
-        if (cells.length === n && s.drop(cells, ~m & 0x1ff)) return true;
+        if (cells.length === n && s.drop(cells, ~m & ALL)) return true;
       }
     }
   }
@@ -118,14 +117,14 @@ function subsets(s: State): boolean {
 
 /** X-윙(2) · 황새치(3) · 해파리(4): n개 행에서 v 자리가 n개 열 안에만 → 그 열의 다른 행에서 v 를 지운다 (행·열 바꿔서도) */
 function fish(s: State): boolean {
-  for (const bit of bits(0x1ff))
+  for (const bit of bits(ALL))
     for (const [base, cover] of [
-      [UNITS.slice(0, 9), UNITS.slice(9, 18)],
-      [UNITS.slice(9, 18), UNITS.slice(0, 9)],
+      [UNITS.slice(0, N), UNITS.slice(N, 2 * N)],
+      [UNITS.slice(N, 2 * N), UNITS.slice(0, N)],
     ]) {
       const pos = base.map((u) => u.reduce((m, i, k) => (s.c[i] & bit ? m | (1 << k) : m), 0));
       for (let n = 2; n <= 4; n++) {
-        const rows = [...Array(9).keys()].filter((r) => pos[r] && count(pos[r]) <= n);
+        const rows = [...Array(N).keys()].filter((r) => pos[r] && count(pos[r]) <= n);
         for (const pick of combos(rows, n)) {
           const cols = pick.reduce((m, r) => m | pos[r], 0);
           if (count(cols) !== n) continue;
@@ -139,7 +138,7 @@ function fish(s: State): boolean {
 
 /** XY-윙 · XYZ-윙: 축 칸과 두 집게 칸 (집게는 후보 2개씩, 공통 숫자 z) → 셋 모두를 보는 칸에서 z 를 지운다 */
 function wings(s: State): boolean {
-  for (let p = 0; p < 81; p++) {
+  for (let p = 0; p < CELLS; p++) {
     const n = count(s.c[p]);
     if (n !== 2 && n !== 3) continue;
     const pincers = PEERS[p].filter((i) => count(s.c[i]) === 2);
@@ -158,7 +157,7 @@ function wings(s: State): boolean {
 
 /** W-윙: 후보가 똑같이 {x,y} 인 두 칸이 x 의 강한 링크(유닛에 x 자리가 둘뿐) 양끝을 하나씩 보면, 두 칸을 다 보는 칸에서 y 를 지운다 */
 function wWing(s: State): boolean {
-  const pairs = [...Array(81).keys()].filter((i) => count(s.c[i]) === 2);
+  const pairs = [...Array(CELLS).keys()].filter((i) => count(s.c[i]) === 2);
   for (const [a, b] of combos(pairs, 2)) {
     if (s.c[a] !== s.c[b] || IS_PEER[a][b]) continue;
     for (const x of bits(s.c[a]))
@@ -178,22 +177,21 @@ function wWing(s: State): boolean {
  * 지느러미가 참이든(그 박스) X-윙이 서든(그 열) 꺼지는 칸 = 두 열 ∩ 지느러미 박스 (기준 행 제외) 에서 v 를 지운다 (행·열 바꿔서도)
  */
 function finnedXWing(s: State): boolean {
-  const boxOf = (i: number) => Math.floor(i / 27) * 3 + Math.floor((i % 9) / 3);
-  for (const bit of bits(0x1ff))
+  for (const bit of bits(ALL))
     for (const [base, cover] of [
-      [UNITS.slice(0, 9), UNITS.slice(9, 18)],
-      [UNITS.slice(9, 18), UNITS.slice(0, 9)],
+      [UNITS.slice(0, N), UNITS.slice(N, 2 * N)],
+      [UNITS.slice(N, 2 * N), UNITS.slice(0, N)],
     ])
-      for (const [r1, r2] of combos([...Array(9).keys()], 2)) {
+      for (const [r1, r2] of combos([...Array(N).keys()], 2)) {
         // 이미 v 가 놓인 줄은 X-윙 다리가 못 된다
         if (!base[r1].some((i) => s.c[i] & bit) || !base[r2].some((i) => s.c[i] & bit)) continue;
         const lines = [...base[r1], ...base[r2]];
         const spots = lines.filter((i) => s.c[i] & bit);
-        for (const [c1, c2] of combos([...Array(9).keys()], 2)) {
+        for (const [c1, c2] of combos([...Array(N).keys()], 2)) {
           const covered = [...cover[c1], ...cover[c2]];
           const fins = spots.filter((i) => !covered.includes(i));
-          if (!fins.length || fins.some((i) => boxOf(i) !== boxOf(fins[0]))) continue;
-          if (s.drop(covered.filter((i) => boxOf(i) === boxOf(fins[0]) && !lines.includes(i)), bit)) return true;
+          if (!fins.length || fins.some((i) => BOX[i] !== BOX[fins[0]])) continue;
+          if (s.drop(covered.filter((i) => BOX[i] === BOX[fins[0]] && !lines.includes(i)), bit)) return true;
         }
       }
   return false;
@@ -233,7 +231,7 @@ function chainFrom(s: State, [c0, b0]: Node, strong: (n: Node) => Node[], weak: 
 
 /** X-사슬: 한 숫자만으로, 강한 링크 = 유닛에 그 숫자 자리가 둘뿐, 약한 링크 = 서로 보는 칸 */
 function xChains(s: State): boolean {
-  for (const bit of bits(0x1ff)) {
+  for (const bit of bits(ALL)) {
     const partner = new Map<number, number[]>();
     for (const u of UNITS) {
       const ends = u.filter((i) => s.c[i] & bit);
@@ -251,7 +249,7 @@ function xyChains(s: State): boolean {
   const bivalue = (i: number) => count(s.c[i]) === 2;
   const strong = ([i, b]: Node): Node[] => [[i, s.c[i] & ~b]];
   const weak = ([i, b]: Node): Node[] => PEERS[i].filter((j) => bivalue(j) && s.c[j] & b).map((j) => [j, b]);
-  for (let i = 0; i < 81; i++) if (bivalue(i)) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak)) return true;
+  for (let i = 0; i < CELLS; i++) if (bivalue(i)) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak)) return true;
   return false;
 }
 
@@ -261,21 +259,20 @@ function xyChains(s: State): boolean {
  * BUG+1 — 후보 3개인 칸 하나 빼고 전부 후보 2개면, 그 칸에서 행에 3번 나오는 숫자가 답이다.
  */
 function uniqueness(s: State): boolean {
-  const boxOf = (i: number) => Math.floor(i / 27) * 3 + Math.floor((i % 9) / 3);
-  for (const [r1, r2] of combos([...Array(9).keys()], 2))
-    for (const [c1, c2] of combos([...Array(9).keys()], 2)) {
-      const cells = [r1 * 9 + c1, r1 * 9 + c2, r2 * 9 + c1, r2 * 9 + c2];
-      if (new Set(cells.map(boxOf)).size !== 2 || cells.some((i) => !s.c[i])) continue;
+  for (const [r1, r2] of combos([...Array(N).keys()], 2))
+    for (const [c1, c2] of combos([...Array(N).keys()], 2)) {
+      const cells = [r1 * N + c1, r1 * N + c2, r2 * N + c1, r2 * N + c2];
+      if (new Set(cells.map((i) => BOX[i])).size !== 2 || cells.some((i) => !s.c[i])) continue;
       const pairs = cells.filter((i) => count(s.c[i]) === 2);
       if (pairs.length !== 3 || pairs.some((i) => s.c[i] !== s.c[pairs[0]])) continue;
       const odd = cells.find((i) => !pairs.includes(i))!;
       if ((s.c[odd] & s.c[pairs[0]]) === s.c[pairs[0]] && s.drop([odd], s.c[pairs[0]])) return true;
     }
-  const open = [...Array(81).keys()].filter((i) => s.c[i]);
+  const open = [...Array(CELLS).keys()].filter((i) => s.c[i]);
   const triple = open.filter((i) => count(s.c[i]) !== 2);
   if (triple.length === 1 && count(s.c[triple[0]]) === 3) {
     const t = triple[0];
-    const row = UNITS[Math.floor(t / 9)];
+    const row = UNITS[Math.floor(t / N)];
     const b = bits(s.c[t]).find((bit) => row.filter((i) => s.c[i] & bit).length === 3);
     if (b) {
       s.place(t, 32 - Math.clz32(b));
@@ -288,7 +285,7 @@ function uniqueness(s: State): boolean {
 /** 교대 추론 사슬(AIC): 강한 링크 = 유닛 켤레 + 칸 안 후보 2개, 약한 링크 = 같은 숫자 서로 보는 칸 + 같은 칸 다른 후보 */
 function aic(s: State): boolean {
   const partner = new Map<number, number[]>();
-  for (const bit of bits(0x1ff))
+  for (const bit of bits(ALL))
     for (const u of UNITS) {
       const ends = u.filter((i) => s.c[i] & bit);
       if (ends.length === 2) ends.forEach((i, k) => partner.set(i * 512 + bit, [...(partner.get(i * 512 + bit) ?? []), ends[1 - k]]));
@@ -301,13 +298,14 @@ function aic(s: State): boolean {
     ...PEERS[i].filter((j) => s.c[j] & b).map((j): Node => [j, b]),
     ...bits(s.c[i] & ~b).map((o): Node => [i, o]),
   ];
-  for (let i = 0; i < 81; i++) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak)) return true;
+  for (let i = 0; i < CELLS; i++) for (const b of bits(s.c[i])) if (chainFrom(s, [i, b], strong, weak)) return true;
   return false;
 }
 
 /** 기술로 풀 수 있는 데까지 푼 판·남은 후보와 필요했던 단계 (5면 grid 에 빈칸이 남는다) */
 export function logicSolve(p: Grid): { tier: Tier; grid: Grid; cands: number[] } {
   const s = new State(p);
+  use(s.G);
   let tier: Tier = 0;
   while (s.g.some((v) => !v)) {
     if (singles(s)) continue;

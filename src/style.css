@@ -317,8 +317,29 @@ input:focus {
   height: 110px;
   transition: transform 0.2s;
 }
-.bot:hover img {
-  transform: translateY(-4px) rotate(-4deg);
+/* 호버하면 비웃는 얼굴로 바뀌어 킬킬거리며 들썩인다 (블록 윗면은 img 위치가 바뀔 때마다 다시 그린다) */
+.bot img.cackle {
+  animation: cackle 0.32s steps(1) infinite;
+}
+@keyframes cackle {
+  0% {
+    transform: translate(0, -4px);
+  }
+  25% {
+    transform: translate(-2px, -7px);
+  }
+  50% {
+    transform: translate(1px, -3px);
+  }
+  75% {
+    transform: translate(2px, -6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bot img.cackle {
+    animation: none;
+    transform: translateY(-4px);
+  }
 }
 .bot b {
   font-size: 20px;
@@ -1761,4 +1782,56 @@ textarea {
 .splat b,
 .splat em {
   z-index: 1;
+}
+
+/* ── 6×6 (2×3 박스) */
+.board.six {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+}
+.board.six .cell {
+  font-size: calc(var(--size) / 10);
+}
+.board.six .cell[data-r='2'] {
+  border-bottom: 1px solid var(--line);
+}
+.board.six .cell[data-r='1'],
+.board.six .cell[data-r='3'] {
+  border-bottom: 2.5px solid var(--thick);
+}
+.board.six .cell[data-c='5'] {
+  border-right: none;
+}
+.board.six .cell[data-r='5'] {
+  border-bottom: none;
+}
+.board.six .cell[data-r='0'][data-c='5'] {
+  border-top-right-radius: 11px;
+}
+.board.six .cell[data-r='5'][data-c='0'] {
+  border-bottom-left-radius: 11px;
+}
+.board.six .cell[data-r='5'][data-c='5'] {
+  border-bottom-right-radius: 11px;
+}
+.board.six .cursor {
+  width: calc(100% / 6);
+  height: calc(100% / 6);
+}
+.board.six .notes {
+  grid-template-rows: repeat(2, 1fr);
+  padding: 4px;
+}
+.board.six .notes i {
+  font-size: calc(var(--size) / 30);
+}
+.pad.six,
+.mini.six,
+.pv.six {
+  grid-template-columns: repeat(6, 1fr);
+}
+@media (min-width: 1181px) {
+  .bots.six {
+    grid-template-columns: repeat(3, 200px);
+  }
 }

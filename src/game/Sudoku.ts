@@ -1,6 +1,6 @@
 import { grade, type Tier } from './Grade';
 
-/** 81칸 1차원 격자. 0 = 빈칸 */
+/** 1차원 격자 (9×9 = 81칸, 6×6 = 36칸). 0 = 빈칸 */
 export type Grid = number[];
 export type Level = 'easy' | 'medium' | 'hard' | 'hell' | 'king';
 
@@ -22,27 +22,67 @@ export const LEVELS: Record<Level, { label: string; clues: number; tier: Tier }>
 /** 한 판에 플레이어마다 쓸 수 있는 힌트 수 */
 export const HINTS = 3;
 
-/** 칸마다 같은 행·열·박스에 있는 다른 20칸 */
-export const PEERS: number[][] = Array.from({ length: 81 }, (_, i) => {
-  const r = Math.floor(i / 9);
-  const c = i % 9;
-  const br = r - (r % 3);
-  const bc = c - (c % 3);
-  const s = new Set<number>();
-  for (let k = 0; k < 9; k++) {
-    s.add(r * 9 + k);
-    s.add(k * 9 + c);
-    s.add((br + Math.floor(k / 3)) * 9 + bc + (k % 3));
-  }
-  s.delete(i);
-  return [...s];
-});
+/** 판 크기: 9×9 (3×3 박스) 또는 6×6 (가로 3 × 세로 2 박스) */
+export type Size = 6 | 9;
+export const SIZES: Size[] = [9, 6];
+
+/** 6×6 은 판이 작아 지옥 이상 기술이 필요한 판이 사실상 안 나온다 */
+export const levelsFor = (size: Size): Level[] => (size === 6 ? ['easy', 'medium', 'hard'] : (Object.keys(LEVELS) as Level[]));
+
+/** 자동 메모: 9×9 는 지옥부터, 6×6 은 고급에서 */
+export const autoNotesFor = (level: Level, size: Size): boolean => LEVELS[level].tier >= 3 || (size === 6 && level === 'hard');
+
+/**
+ * 6×6 남길 힌트 수. 6×6 은 97% 가 드러난/숨겨진 하나만으로 풀려서 초급·중급은 힌트 수로 가르고,
+ * 고급만 그보다 어려운 기술(교차로·부분집합·윙 …)이 꼭 필요한 판을 고른다
+ */
+const CLUES6: Partial<Record<Level, number>> = { easy: 20, medium: 12, hard: 8 };
+
+/** 판 크기별 칸 관계. grid 길이(36 / 81)로 찾는다 */
+export interface Geo {
+  n: number;
+  cells: number;
+  /** 숫자 1~n 전부의 비트마스크 */
+  all: number;
+  /** 행 n · 열 n · 박스 n */
+  units: number[][];
+  /** 칸마다 같은 행·열·박스에 있는 다른 칸 */
+  peers: number[][];
+  isPeer: boolean[][];
+  boxOf: number[];
+}
+
+const GEOS = new Map<number, Geo>();
+
+export function geo(cells: number): Geo {
+  let G = GEOS.get(cells);
+  if (G) return G;
+  const n = Math.sqrt(cells);
+  const bh = n === 6 ? 2 : 3;
+  const bw = n / bh;
+  const boxOf = Array.from({ length: cells }, (_, i) => Math.floor(Math.floor(i / n) / bh) * (n / bw) + Math.floor((i % n) / bw));
+  const units = [
+    ...Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => r * n + c)),
+    ...Array.from({ length: n }, (_, c) => Array.from({ length: n }, (_, r) => r * n + c)),
+    ...Array.from({ length: n }, (_, b) => [...Array(cells).keys()].filter((i) => boxOf[i] === b)),
+  ];
+  const peers = Array.from({ length: cells }, (_, i) => [...new Set(units.filter((u) => u.includes(i)).flat())].filter((p) => p !== i));
+  const isPeer = peers.map((ps) => {
+    const row = new Array(cells).fill(false);
+    for (const p of ps) row[p] = true;
+    return row;
+  });
+  G = { n, cells, all: (1 << n) - 1, units, peers, isPeer, boxOf };
+  GEOS.set(cells, G);
+  return G;
+}
 
 /** 칸 i 에 놓을 수 있는 숫자 비트마스크 (bit v-1) */
 export function candidates(g: Grid, i: number): number {
+  const G = geo(g.length);
   let used = 0;
-  for (const p of PEERS[i]) if (g[p]) used |= 1 << (g[p] - 1);
-  return ~used & 0x1ff;
+  for (const p of G.peers[i]) if (g[p]) used |= 1 << (g[p] - 1);
+  return ~used & G.all;
 }
 
 /**
@@ -52,7 +92,7 @@ export function candidates(g: Grid, i: number): number {
  */
 export function pruneNotes(grid: Grid, solution: Grid, notes: number[]): void {
   const known = grid.map((v, i) => (v === solution[i] ? v : 0));
-  for (let i = 0; i < 81; i++) notes[i] = known[i] ? 0 : notes[i] & candidates(known, i);
+  for (let i = 0; i < grid.length; i++) notes[i] = known[i] ? 0 : notes[i] & candidates(known, i);
 }
 
 export function bitCount(m: number): number {
@@ -72,7 +112,7 @@ function search(g: Grid, limit: number, out?: Grid, rand?: () => number): number
     let best = -1;
     let bestMask = 0;
     let bestCnt = 10;
-    for (let i = 0; i < 81; i++) {
+    for (let i = 0; i < a.length; i++) {
       if (a[i]) continue;
       const m = candidates(a, i);
       const n = bitCount(m);
@@ -86,7 +126,7 @@ function search(g: Grid, limit: number, out?: Grid, rand?: () => number): number
     }
     if (best === -1) {
       found++;
-      if (out && found === 1) out.splice(0, 81, ...a);
+      if (out && found === 1) out.splice(0, a.length, ...a);
       return found >= limit;
     }
     const vals: number[] = [];
@@ -138,23 +178,26 @@ export function mulberry32(seed: number): () => number {
  * 니코리 관례대로 힌트 배치가 180° 회전 대칭이 되도록 i 와 80-i 를 함께 지운다.
  * 끝까지 푸는 데 꼭 필요한 기술 단계(Grade.ts)가 난이도의 tier 와 다르면 다시 만든다.
  */
-export function generate(level: Level, rand: () => number = Math.random): { puzzle: Grid; solution: Grid } {
+export function generate(level: Level, rand: () => number = Math.random, size: Size = 9): { puzzle: Grid; solution: Grid } {
+  const N = size * size;
+  const target = size === 9 ? LEVELS[level].clues : (CLUES6[level] ?? 10);
   for (;;) {
     const solution: Grid = [];
-    search(new Array(81).fill(0), 1, solution, rand);
+    search(new Array(N).fill(0), 1, solution, rand);
     const puzzle = solution.slice();
-    let clues = 81;
-    for (const i of shuffle([...Array(41).keys()], rand)) {
-      if (clues <= LEVELS[level].clues) break;
-      const pair = i === 40 ? [40] : [i, 80 - i];
+    let clues = N;
+    for (const i of shuffle([...Array(Math.ceil(N / 2)).keys()], rand)) {
+      if (clues <= target) break;
+      const pair = i === N - 1 - i ? [i] : [i, N - 1 - i];
       const saved = pair.map((k) => puzzle[k]);
       for (const k of pair) puzzle[k] = 0;
       if (countSolutions(puzzle) === 1) clues -= pair.length;
       else pair.forEach((k, n) => (puzzle[k] = saved[n]));
     }
-    if (grade(puzzle) === LEVELS[level].tier) return { puzzle, solution };
+    const t = grade(puzzle);
+    if (size === 9 ? t === LEVELS[level].tier : level === 'hard' ? t >= 1 : t === 0) return { puzzle, solution };
   }
 }
 
 export const toStr = (g: Grid): string => g.join('');
-export const fromStr = (s: string): Grid => [...s.slice(0, 81)].map((ch) => (/[1-9]/.test(ch) ? Number(ch) : 0));
+export const fromStr = (s: string): Grid => [...s].map((ch) => (/[1-9]/.test(ch) ? Number(ch) : 0));

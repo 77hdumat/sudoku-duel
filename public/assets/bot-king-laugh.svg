@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <path d="M20 26 L100 26 L94 14 L26 14 Z" fill="#14100c" stroke="#c9a227" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="34" y="2" width="52" height="14" rx="3" fill="#14100c" stroke="#c9a227" stroke-width="3"/>
+  <text x="60" y="13" font-size="11" font-weight="900" text-anchor="middle" fill="#c9a227" font-family="serif">王</text>
+  <g stroke="#c9a227" stroke-width="2"><line x1="24" y1="26" x2="22" y2="44"/><line x1="32" y1="26" x2="31" y2="40"/><line x1="88" y1="26" x2="89" y2="40"/><line x1="96" y1="26" x2="98" y2="44"/></g>
+  <g fill="#e5303f"><circle cx="22" cy="46" r="3"/><circle cx="31" cy="42" r="3"/><circle cx="89" cy="42" r="3"/><circle cx="98" cy="46" r="3"/></g>
+  <path d="M18 30 H102 V80 Q102 104 80 106 H40 Q18 104 18 80 Z" fill="#2b3530" stroke="#0c100e" stroke-width="4"/>
+  <path d="M26 38 L56 50" stroke="#0c100e" stroke-width="7" stroke-linecap="round"/>
+  <path d="M94 38 L64 50" stroke="#0c100e" stroke-width="7" stroke-linecap="round"/>
+  <path d="M30 58 Q42 50 54 58 Q42 62 30 58 Z" fill="#fff8d0"/><path d="M90 58 Q78 50 66 58 Q78 62 90 58 Z" fill="#fff8d0"/>
+  <circle cx="44" cy="57" r="3.5" fill="#e5303f"/><circle cx="76" cy="57" r="3.5" fill="#e5303f"/>
+  <path d="M54 64 L60 70 L66 64" stroke="#0c100e" stroke-width="3" fill="none" stroke-linejoin="round"/>
+  <path d="M38 86 Q60 80 82 86 Q78 118 60 118 Q42 118 38 86 Z" fill="#0c100e"/>
+  <path d="M32 74 Q60 100 88 74 Q60 82 32 74 Z" fill="#5a0d14" stroke="#0c100e" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M40 77 L44 84 L48 79 L52 85 L56 80 L60 86 L64 80 L68 85 L72 79 L76 84 L80 77 Z" fill="#f2e6c8"/>
+</svg>
