@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AI_PROFILES, AiSolver } from './Ai';
-import { candidates, countSolutions, fromStr, generate, LEVELS, mulberry32, PEERS, solve, toStr, type Level } from './Sudoku';
+import { candidates, countSolutions, fromStr, generate, LEVELS, mulberry32, PEERS, pruneNotes, solve, toStr, type Level } from './Sudoku';
 
 function valid(g: number[]): boolean {
   return g.every((v, i) => v >= 1 && v <= 9 && PEERS[i].every((p) => g[p] !== v));
@@ -78,5 +78,35 @@ describe('AiSolver', () => {
     expect(h).toBeGreaterThan(m);
     // 고급도 사람이 붙어 볼 만한 시간 (예전엔 2분대에 끝나 의욕이 꺾였다)
     expect(h).toBeGreaterThan(10 * 60);
+  });
+});
+
+describe('pruneNotes', () => {
+  const { puzzle, solution } = generate('easy', mulberry32(7));
+  const empty = puzzle.findIndex((v) => !v);
+  const peer = PEERS[empty].find((p) => !puzzle[p] && solution[p] !== solution[empty])!;
+  const all = 0x1ff;
+
+  it('맞게 놓인 숫자(주어진 칸 포함)는 같은 행·열·박스 메모에서 빠진다', () => {
+    const grid = puzzle.slice();
+    grid[peer] = solution[peer];
+    const notes = new Array(81).fill(0);
+    notes[empty] = all;
+    pruneNotes(grid, solution, notes);
+    expect(notes[empty] & (1 << (solution[peer] - 1))).toBe(0);
+    expect(notes[empty]).toBe(candidates(grid, empty));
+    expect(notes[peer]).toBe(0);
+  });
+
+  it('틀린 숫자는 기준이 아니다 — 메모를 지우지 않는다', () => {
+    const grid = puzzle.slice();
+    const wrong = (solution[peer] % 9) + 1;
+    grid[peer] = wrong;
+    const notes = new Array(81).fill(0);
+    notes[empty] = all;
+    notes[peer] = all;
+    pruneNotes(grid, solution, notes);
+    expect(notes[empty]).toBe(candidates(puzzle, empty));
+    expect(notes[peer]).toBe(candidates(puzzle, peer));
   });
 });

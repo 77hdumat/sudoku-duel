@@ -38,6 +38,16 @@ export function candidates(g: Grid, i: number): number {
   return ~used & 0x1ff;
 }
 
+/**
+ * 답이 될 수 없는 메모를 지운다: 맞게 채운 칸(주어진 칸 포함)은 메모 없음,
+ * 빈칸·틀린 숫자 칸은 같은 행·열·박스에 맞게 놓인 숫자를 메모에서 뺀다.
+ * 틀린 숫자는 기준으로 삼지 않는다.
+ */
+export function pruneNotes(grid: Grid, solution: Grid, notes: number[]): void {
+  const known = grid.map((v, i) => (v === solution[i] ? v : 0));
+  for (let i = 0; i < 81; i++) notes[i] = known[i] ? 0 : notes[i] & candidates(known, i);
+}
+
 export function bitCount(m: number): number {
   let n = 0;
   for (; m; m &= m - 1) n++;
