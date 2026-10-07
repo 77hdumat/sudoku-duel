@@ -447,21 +447,26 @@ input:focus {
   margin: 0;
   width: 100%;
   max-width: var(--size);
-  padding: 8px 14px;
-  border: 2px solid #e5303f;
+  padding: 5px 12px;
+  border: 1.5px solid #e5303f;
   border-radius: 14px;
   background: rgba(229, 48, 63, 0.1);
   color: #e5303f;
-  font-weight: 800;
-  font-size: 15px;
-  line-height: 1.4;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.45;
   text-align: center;
   word-break: keep-all;
-  animation: blink 1s step-end infinite;
+  animation: warn-fade 4s ease-in-out infinite;
 }
-@keyframes blink {
+/* 천천히 나타났다가 거의 사라지는 숨쉬기 */
+@keyframes warn-fade {
+  0%,
+  100% {
+    opacity: 0.1;
+  }
   50% {
-    opacity: 0.25;
+    opacity: 1;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -471,8 +476,8 @@ input:focus {
 }
 @media (max-width: 520px) {
   .no-guess {
-    font-size: 13px;
-    padding: 6px 10px;
+    font-size: 11px;
+    padding: 4px 8px;
   }
 }
 .board-wrap {
