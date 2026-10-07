@@ -33,6 +33,8 @@ export class Board {
   onInput: ((kind: 'select' | 'note' | 'blocked' | 'auto') => void) | null = null;
   /** 다시 그릴 때마다 (관전자에게 판·메모를 보내는 용도) */
   onRender: (() => void) | null = null;
+  /** 풀이 버튼 (변성대왕 싱글) */
+  onExplain: (() => void) | null = null;
 
   private cells: HTMLElement[] = [];
   /** 고른 칸 네 모서리에 붙는 꺾쇠 커서 (칸 사이를 미끄러져 다닌다) */
@@ -57,6 +59,8 @@ export class Board {
     /** 지옥 이상(6×6 은 고급): 빈칸마다 지금 가능한 후보를 메모로 한 번에 채우는 버튼 */
     private readonly autoNotes = false,
     hints = HINTS,
+    /** 풀이 버튼 — 변성대왕 싱글에서만, 무제한 */
+    explain = false,
   ) {
     this.hintsLeft = hints;
     this.grid = puzzle.slice();
@@ -101,7 +105,8 @@ export class Board {
       `<button class="tool" data-k="undo">↶ 되돌리기 <kbd>Z</kbd></button>` +
       (shared ? '' : `<button class="tool" data-k="erase">⌫ 지우기</button>`) +
       `<button class="tool hint" data-k="hint">💡 힌트 <b></b> <kbd>H</kbd></button>` +
-      (autoNotes ? `<button class="tool" data-k="auto">✨ 자동 메모 <kbd>A</kbd></button>` : '');
+      (autoNotes ? `<button class="tool" data-k="auto">✨ 자동 메모 <kbd>A</kbd></button>` : '') +
+      (explain ? `<button class="tool explain-btn" data-k="explain">🧠 풀이 <kbd>E</kbd></button>` : '');
     padEl.appendChild(tools);
     this.noteBtn = tools.querySelector('[data-k="note"]')!;
     this.noteBtn.addEventListener('click', () => this.toggleNotes());
@@ -111,6 +116,7 @@ export class Board {
     this.hintBtn = tools.querySelector('[data-k="hint"]')!;
     this.hintBtn.addEventListener('click', () => this.useHint());
     tools.querySelector('[data-k="auto"]')?.addEventListener('click', () => this.fillNotes());
+    tools.querySelector('[data-k="explain"]')?.addEventListener('click', () => !this.locked && this.onExplain?.());
 
     document.addEventListener('keydown', this.onKey);
     this.render();
@@ -260,6 +266,20 @@ export class Board {
     this.onChange?.(this.filled, this.mistakes);
   }
 
+  /** 맞게 채운 숫자만 남긴 판 (풀이·힌트 계산용) */
+  known(): Grid {
+    return this.grid.map((v, k) => (this.done(k) ? v : 0));
+  }
+
+  /** 풀이 한 단계 반영: 지운 후보는 메모에서 빼고, 확정 칸은 힌트처럼 채운다 */
+  applyExplain(elim: { i: number; d: number }[], place?: { i: number; v: number }): void {
+    for (const { i, d } of elim) if (!this.grid[i]) this.notes[i] &= ~(1 << (d - 1));
+    if (place && !this.done(place.i)) {
+      this.sel = place.i;
+      this.commit(place.i, true);
+    } else this.render();
+  }
+
   /** 개인판에서 정답 확정 */
   private commit(i: number, hint: boolean): void {
     const v = this.solution[i];
@@ -330,6 +350,7 @@ export class Board {
     else if (k === 'h' || k === 'H' || k === 'ㅗ') this.useHint();
     else if (k === 'z' || k === 'Z' || k === 'ㅋ') this.undo();
     else if ((k === 'a' || k === 'A' || k === 'ㅁ') && this.autoNotes) this.fillNotes();
+    else if ((k === 'e' || k === 'E' || k === 'ㄷ') && this.onExplain) !this.locked && this.onExplain();
     else if (k.startsWith('Arrow')) {
       const n = this.G.n;
       const i = this.sel < 0 ? Math.floor(this.G.cells / 2) : this.sel;

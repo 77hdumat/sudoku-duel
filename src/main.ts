@@ -3,6 +3,7 @@ import { AI_PROFILES, AiSolver } from './game/Ai';
 import { ClaimJudge, type ClaimEvent } from './game/Claim';
 import { ATTACK_COMBO, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUntil } from './game/Combo';
 import { finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './game/Ranking';
+import { explainNext } from './game/Grade';
 import { autoNotesFor, fromStr, generate, HINTS, LEVELS, levelsFor, SIZES, solve, toStr, type Grid, type Level, type Size } from './game/Sudoku';
 import { Fx } from './fx/Fx';
 import { goo, type Goo } from './fx/Goo';
@@ -10,6 +11,7 @@ import { sfx } from './fx/Sfx';
 import { Net, type NetError } from './net/Net';
 import { CHAT_MAX, cleanText, FREEZE_MS, HINT_OPTIONS, isRace, MAX_PLAYERS, MAX_WATCHERS, NAME_MAX, RULES, type Msg, type PlayerInfo, type ResultRow, type Rule } from './net/Protocol';
 import { Board } from './ui/Board';
+import { showExplain } from './ui/Explain';
 
 const app = document.getElementById('app')!;
 const LEVEL_KEYS = Object.keys(LEVELS) as Level[];
@@ -324,6 +326,8 @@ interface PlayOpts {
   /** 아이템전: HUD 에 콤보 게이지 */
   meter?: ComboMeter;
   hints?: number;
+  /** 풀이 버튼 (변성대왕 싱글, 무제한) */
+  explain?: boolean;
   onQuit(): void;
 }
 
@@ -346,7 +350,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     </main>
     ${o.chat ? '<aside class="chat-slot" id="chat-slot"></aside>' : ''}
   </div>`);
-  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, autoNotesFor(o.level, puzzle.length === 36 ? 6 : 9), o.hints);
+  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, autoNotesFor(o.level, puzzle.length === 36 ? 6 : 9), o.hints, o.explain);
   board.setColor(o.color);
   const timer = $('#timer')!;
   let t0 = 0;
@@ -372,6 +376,30 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     },
   };
   board.onChange = (f, m) => o.onProgress?.(f, m);
+  if (o.explain) {
+    // 풀이로 지운 후보는 이어서 쓴다 (다음 풀이가 같은 단계를 되풀이하지 않게)
+    const ruledOut = new Array(puzzle.length).fill(0);
+    let open = false;
+    board.onExplain = () => {
+      if (open) return;
+      open = true;
+      board.locked = true;
+      sfx.hint();
+      showExplain(
+        $('.board-wrap')!,
+        explainNext(board.known(), ruledOut),
+        Math.sqrt(puzzle.length),
+        (st) => {
+          for (const e of st.elim) ruledOut[e.i] |= 1 << (e.d - 1);
+          board.applyExplain(st.elim, st.place);
+        },
+        () => {
+          open = false;
+          if (!board.solved) board.locked = false;
+        },
+      );
+    };
+  }
   board.onSolved = () => {
     const ms = h.elapsed();
     h.end();
@@ -609,6 +637,7 @@ function startSingle(level: Level, items: boolean, size: Size): void {
 
   const h = play(puzzle, solution, {
     level,
+    explain: level === 'king',
     color: colorOf(0),
     tag: items ? RULES.item.label : undefined,
     chat: false,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { grade, logicSolve } from './Grade';
+import { explainNext, grade, logicSolve } from './Grade';
 import { countSolutions, generate, LEVELS, mulberry32, shuffle, type Grid, type Level } from './Sudoku';
 
 /** 채점 필터 없이 힌트 수만 맞춘 판 (기술마다 골고루 걸리도록) */
@@ -42,4 +42,40 @@ describe('generate 난이도', () => {
     it(`${level}: 꼭 필요한 기술 단계가 ${LEVELS[level].tier}`, () => {
       for (const k of [1, 2, 3]) expect(grade(generate(level, mulberry32(k)).puzzle)).toBe(LEVELS[level].tier);
     });
+});
+
+describe('explainNext (풀이)', () => {
+  it('변성대왕 판을 풀이만으로 끝까지 풀고, 매 단계가 정답과 어긋나지 않는다', () => {
+    const { puzzle, solution } = generate('king', mulberry32(5));
+    const grid = puzzle.slice();
+    const ruledOut = new Array(81).fill(0);
+    const names = new Set<string>();
+    let guard = 0;
+    while (grid.some((v) => !v) && guard++ < 81) {
+      const steps = explainNext(grid, ruledOut);
+      expect(steps.length).toBeGreaterThan(0);
+      for (const st of steps) {
+        names.add(st.name);
+        expect(st.text.length).toBeGreaterThan(0);
+        for (const { i, d } of st.elim) {
+          expect(solution[i]).not.toBe(d);
+          ruledOut[i] |= 1 << (d - 1);
+        }
+      }
+      const last = steps[steps.length - 1];
+      expect(last.place).toBeDefined();
+      expect(last.place!.v).toBe(solution[last.place!.i]);
+      grid[last.place!.i] = last.place!.v;
+    }
+    expect(grid).toEqual(solution);
+    // 변성대왕이니 사람 기술로는 막히는 지점이 있어 가정(포싱)까지 쓰게 된다
+    expect([...names].some((n) => n.includes('포싱') || n.includes('가정'))).toBe(true);
+  }, 60000);
+
+  it('쉬운 판은 첫 풀이가 하나(single)로 바로 숫자를 정한다', () => {
+    const { puzzle, solution } = generate('easy', mulberry32(2));
+    const [st] = explainNext(puzzle);
+    expect(st.name).toMatch(/하나/);
+    expect(st.place!.v).toBe(solution[st.place!.i]);
+  });
 });
