@@ -174,6 +174,19 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
     const st = steps[k];
     svg.replaceChildren();
     el('rect', { class: 'ex-dim', x: 0, y: 0, width: n * U, height: n * U }, svg);
+    // 칸 줄 (박스 경계는 굵게 — 6×6 박스는 가로 3 × 세로 2)
+    const bh = n === 6 ? 2 : 3;
+    for (let k = 1; k < n; k++) {
+      el('line', { class: k % 3 ? 'ex-grid' : 'ex-grid thick', x1: k * U, y1: 0, x2: k * U, y2: n * U }, svg);
+      el('line', { class: k % bh ? 'ex-grid' : 'ex-grid thick', x1: 0, y1: k * U, x2: n * U, y2: k * U }, svg);
+    }
+    // 풀이가 기준으로 삼는 판의 숫자 (화면의 내 메모·틀린 숫자는 아래에 가려진다)
+    const gd = el('g', { class: 'ex-digits' }, svg);
+    st.grid.forEach((v, i) => {
+      if (!v) return;
+      const [x, y] = xy(i);
+      el('text', { x: x + U / 2, y: y + U / 2 }, gd).textContent = String(v);
+    });
     // 그 시점의 후보를 옅게 (강조한 후보는 위에 다시 그려진다). 하나 찾기(기초)는 후보 없이도 보이니 깔지 않는다 — 초보에겐 복잡하기만 하다
     const pc = el('g', { class: 'ex-pencil' }, svg);
     if (TECHS[st.id].tier !== '기초')
@@ -199,7 +212,7 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
       any((d) => d.links?.some((l) => l.strong)) && '<i class="ln strong"></i>실선: 한쪽이 아니면 다른 쪽',
       any((d) => d.links?.some((l) => !l.strong)) && '<i class="ln weak"></i>점선: 둘 다는 불가',
       any((d) => d.assume) && '<i class="off"></i>가정',
-      any((d) => d.bad?.length) && '<i class="bad"></i>모순',
+      any((d) => d.bad?.length) && `<i class="bad"></i>${st.id === 'fix' ? '틀린 칸' : '모순'}`,
       any((d) => d.elim?.length || d.blocked?.length) && '<i class="x">✕</i>못 들어감',
     ].filter(Boolean);
   };
@@ -269,8 +282,12 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
       render();
     });
     on('skip', finish);
-    // 이미 넘긴 기법(지운 후보)까지만 반영하고 닫는다
+    // 이미 넘긴 기법까지 반영하고 닫는다. 지금 기법도 마지막 서술(결론)까지 봤으면 그것도 반영
     on('close', () => {
+      if (lastPh) {
+        apply(steps[k]);
+        k++;
+      }
       close();
       done();
     });
@@ -279,7 +296,7 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
   /** 새 기법에 들어설 때: 처음 보는 기법이면 카드부터 */
   const enter = () => {
     const id = steps[k].id;
-    card = !seenTech.has(id);
+    card = id !== 'fix' && !seenTech.has(id);
     seenTech.add(id);
   };
 

@@ -4,7 +4,7 @@ import { ClaimJudge, type ClaimEvent } from './game/Claim';
 import { ATTACK_COMBO, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUntil } from './game/Combo';
 import { finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './game/Ranking';
 import { explainNext } from './game/Grade';
-import { autoNotesFor, fromStr, generate, HINTS, LEVELS, levelsFor, SIZES, solve, toStr, type Grid, type Level, type Size } from './game/Sudoku';
+import { autoNotesFor, candidates, fromStr, generate, HINTS, LEVELS, levelsFor, SIZES, solve, toStr, type Grid, type Level, type Size } from './game/Sudoku';
 import { Fx } from './fx/Fx';
 import { goo, type Goo } from './fx/Goo';
 import { sfx } from './fx/Sfx';
@@ -389,17 +389,37 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
       open = true;
       board.locked = true;
       sfx.hint();
+      const known = board.known();
+      const steps = explainNext(known, ruledOut);
+      // 판에 틀린 숫자가 있으면 풀이가 기준으로 삼는 판(맞는 숫자만)과 화면이 어긋난다 → 먼저 보여 주고 비운다
+      const wrong = board.wrongCells();
+      if (wrong.length)
+        steps.unshift({
+          id: 'fix',
+          phases: [
+            {
+              text: `판에 틀린 숫자가 ${wrong.length}개 있어요 (빨간 칸). 틀린 숫자가 있으면 그다음 추리가 전부 꼬여서 끝까지 풀 수 없어요.`,
+              draw: { bad: wrong },
+            },
+            { text: `먼저 이 칸들을 비우고 시작할게요.${board.unseenWrong ? ` (틀린 칸을 알려 준 셈이라 실수 +${board.unseenWrong})` : ''}` },
+          ],
+          elim: [],
+          cands: known.map((v, i) => (v ? 0 : candidates(known, i) & ~ruledOut[i])),
+          grid: known,
+        });
       showExplain(
         $('.board-wrap')!,
-        explainNext(board.known(), ruledOut),
+        steps,
         Math.sqrt(puzzle.length),
         (st) => {
+          if (st.id === 'fix') return board.clearWrong();
           for (const e of st.elim) ruledOut[e.i] |= 1 << (e.d - 1);
           board.applyExplain(st.elim, st.place);
         },
         () => {
           open = false;
-          if (!board.solved) board.locked = false;
+          // 풀이를 연 채로 포기·종료됐으면 잠근 채로 둔다
+          if (!board.solved && !h.ended) board.locked = false;
         },
       );
     };

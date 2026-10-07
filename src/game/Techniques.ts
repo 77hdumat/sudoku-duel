@@ -20,7 +20,9 @@ export type TechId =
   | 'x-chain'
   | 'xy-chain'
   | 'aic'
-  | 'forcing';
+  | 'forcing'
+  /** 기법이 아니라 풀이 전 정리: 판에 틀린 숫자가 있으면 먼저 지운다 */
+  | 'fix';
 
 type RC = [number, number];
 export interface Diagram {
@@ -463,5 +465,14 @@ export const TECHS: Record<TechId, Tech> = {
       cells: [[8, 3]],
       x: [[2, 2]],
     },
+  },
+  fix: {
+    name: '틀린 숫자 정리',
+    tier: '기초',
+    idea: '판에 틀린 숫자가 하나라도 있으면, 그 숫자를 믿고 한 추리가 전부 꼬여서 끝까지 풀 수 없어요.',
+    spot: '풀이를 누르면 틀린 칸을 빨갛게 보여 줘요.',
+    result: '틀린 칸을 비우고 풀이를 시작해요.',
+    memo: '틀린 숫자 하나가 판 전체를 막는다',
+    diagram: {},
   },
 };

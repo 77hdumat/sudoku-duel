@@ -237,10 +237,13 @@ export class Board {
       this.onSolved?.();
       return;
     }
-    this.mistakes += wrong.length;
+    // 이미 빨갛게 드러난 칸은 다시 세지 않는다 (한 칸씩 고치며 다시 채점될 때 같은 칸에 실수가 또 붙지 않게)
+    const fresh = wrong.filter((i) => !this.shownWrong.has(i));
+    this.mistakes += fresh.length;
     for (const i of wrong) this.shownWrong.add(i);
+    if (!fresh.length) return void this.render();
     this.render();
-    this.onChecked?.(wrong.length);
+    this.onChecked?.(fresh.length);
     this.onWrong?.(wrong[0]);
     this.onChange?.(this.filled, this.mistakes);
   }
@@ -269,6 +272,11 @@ export class Board {
     }
     if (i < 0) return;
     this.hintsLeft--;
+    // 채점 숨김: 틀린 숫자 위에 힌트가 정답을 쓰면 틀렸다는 걸 알려 준 셈 — 조용히 바뀌지 않게 실수로 센다
+    if (this.blind && this.grid[i] && this.grid[i] !== this.solution[i] && !this.shownWrong.has(i)) {
+      this.mistakes++;
+      this.onWrong?.(i);
+    }
     this.sel = i;
     if (this.shared) {
       this.render();
@@ -316,6 +324,33 @@ export class Board {
     this.onChange?.(this.filled, this.mistakes);
   }
 
+  /** 정답과 다른 숫자가 들어 있는 칸 (풀이 전 정리용) */
+  wrongCells(): number[] {
+    return this.grid.flatMap((v, i) => (v && !this.given[i] && v !== this.solution[i] ? [i] : []));
+  }
+
+  /** 정리하면 새로 실수로 셀 칸 수 — 채점 숨김에서 아직 빨갛게 드러나지 않은 틀린 칸 (그 밖엔 이미 셌다) */
+  get unseenWrong(): number {
+    return this.blind ? this.wrongCells().filter((i) => !this.shownWrong.has(i)).length : 0;
+  }
+
+  /**
+   * 풀이 전 정리: 틀린 칸을 비운다 (되돌리기 가능). 채점 숨김에선 틀렸다는 걸 알려 준 셈이라 그만큼 실수로 센다
+   * (채점 숨김이 아니면 넣을 때 이미 실수로 셌다)
+   */
+  clearWrong(): void {
+    const wrong = this.wrongCells();
+    if (!wrong.length) return;
+    this.mistakes += this.unseenWrong;
+    this.save();
+    for (const i of wrong) {
+      this.grid[i] = 0;
+      this.shownWrong.delete(i);
+    }
+    this.render();
+    this.onChange?.(this.filled, this.mistakes);
+  }
+
   /** 맞게 채운 숫자만 남긴 판 (풀이·힌트 계산용) */
   known(): Grid {
     return this.grid.map((v, k) => (this.done(k) ? v : 0));
@@ -323,6 +358,8 @@ export class Board {
 
   /** 풀이 한 단계 반영: 지운 후보는 메모에서 빼고, 확정 칸은 힌트처럼 채운다 */
   applyExplain(elim: { i: number; d: number }[], place?: { i: number; v: number }): void {
+    // 되돌리기로 풀이가 지운 후보·넣은 숫자의 메모가 되살아나지 않게 이 시점을 남긴다
+    this.save();
     for (const { i, d } of elim) if (!this.grid[i]) this.notes[i] &= ~(1 << (d - 1));
     if (place && !this.fixed(place.i)) {
       this.sel = place.i;

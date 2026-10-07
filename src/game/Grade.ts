@@ -82,6 +82,8 @@ export interface Step {
   phases: Phase[];
   /** 이 기술을 쓰기 직전의 후보 (칸별 비트) — 화면에 옅게 깔아 사슬을 따라가게 한다 */
   cands: number[];
+  /** 이 기술을 쓰기 직전의 판 (풀이가 기준으로 삼는 숫자들 — 화면에 그대로 그려 내 메모·틀린 숫자와 섞이지 않게) */
+  grid: number[];
   elim: { i: number; d: number }[];
   place?: { i: number; v: number };
 }
@@ -132,16 +134,18 @@ const unitWith = (a: number, b: number) => UNITS.find((u) => u.includes(a) && u.
 function fire(s: State, cells: number[], mask: number, info: (elim: Step['elim']) => Info): boolean {
   const elim = say ? cells.flatMap((i) => bits(s.c[i] & mask).map((b) => ({ i, d: digitOf(b) }))) : [];
   const cands = say ? s.c.slice() : [];
+  const grid = say ? s.g.slice() : [];
   if (!s.drop(cells, mask)) return false;
-  if (say) say({ ...info(elim), elim, cands });
+  if (say) say({ ...info(elim), elim, cands, grid });
   return true;
 }
 
 /** 칸을 확정하고 단계를 남긴다 */
 function put(s: State, i: number, v: number, info: () => Info): true {
   const cands = say ? s.c.slice() : [];
+  const grid = say ? s.g.slice() : [];
   s.place(i, v);
-  if (say) say({ ...info(), elim: [], place: { i, v }, cands });
+  if (say) say({ ...info(), elim: [], place: { i, v }, cands, grid });
   return true;
 }
 
@@ -775,7 +779,7 @@ function forcing(s: State): boolean {
           { text: `여기서부터는 그냥은 더 못 풀어요. 그래서 ${cell(i)}에 ${J(v, '이', '가')} 들어간다고 일단 가정해 볼게요 (주황).`, draw: { assume: { i, v } } },
           ...(depth < 2
             ? [
-                { text: `그렇다고 치고 ${how}로 계속 풀어 나가면, 초록 숫자 ${trail.length}개가 차례로 채워져요.`, draw: { trail } },
+                { text: `그렇다고 치고 ${how}로 계속 풀어 나가면, 초록 숫자 ${trail.length}개가 차례로 채워져요. (머릿속으로만 넣어 보는 숫자라 판에는 쓰지 않아요)`, draw: { trail } },
                 { text: `그런데 ${why}! (빨간 곳) 말이 안 되는 상황이에요.`, draw: { bad: badCells } },
               ]
             : [{ text: `${why}. (사람이 찾기엔 아주 어려운 단계예요)`, draw: { bad: badCells } }]),

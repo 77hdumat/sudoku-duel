@@ -1869,7 +1869,21 @@ textarea {
 }
 .ex-dim {
   fill: var(--panel);
-  opacity: 0.55;
+  /* 아래 판(내 메모·틀린 숫자)을 거의 가리고, 풀이가 기준으로 삼는 판을 위에 다시 그린다 */
+  opacity: 0.93;
+}
+.ex-grid {
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.ex-grid.thick {
+  stroke: var(--thick);
+  stroke-width: 5;
+}
+.ex-digits text {
+  fill: var(--ink);
+  font-size: 56px;
+  opacity: 0.8;
 }
 .ex-pencil text {
   fill: var(--muted);
