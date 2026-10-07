@@ -37,10 +37,10 @@ export type Msg =
   | { t: 'welcome'; id: number }
   | { t: 'full'; why: 'slots' | 'playing' | 'watchers' }
   | { t: 'hello'; name: string; watch?: boolean }
-  | { t: 'lobby'; players: PlayerInfo[]; watchers: PlayerInfo[]; level: Level; rule: Rule; hints: number; auto: boolean }
-  | { t: 'start'; puzzle: string; level: Level; rule: Rule; hints: number; auto: boolean }
+  | { t: 'lobby'; players: PlayerInfo[]; watchers: PlayerInfo[]; level: Level; rule: Rule; hints: number }
+  | { t: 'start'; puzzle: string; level: Level; rule: Rule; hints: number }
   /** 게임 중에 들어온 관전자에게: 지금 판과 기록 (ms = 시작 후 지난 시간) */
-  | { t: 'watch'; puzzle: string; level: Level; rule: Rule; hints: number; auto: boolean; ms: number; rows: ResultRow[] }
+  | { t: 'watch'; puzzle: string; level: Level; rule: Rule; hints: number; ms: number; rows: ResultRow[] }
   /** 플레이어 → 방장 → 관전자: 판 상태 (Board.snapshot) */
   | { t: 'view'; id: number; grid: string; notes: string }
   /** cells: 미리보기용 81 글자 (g 주어진 칸, 1 맞게 채운 칸, 0 빈칸) */

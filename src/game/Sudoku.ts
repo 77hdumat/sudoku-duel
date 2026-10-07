@@ -1,15 +1,19 @@
+import { grade, type Tier } from './Grade';
+
 /** 81칸 1차원 격자. 0 = 빈칸 */
 export type Grid = number[];
-export type Level = 'easy' | 'medium' | 'hard';
+export type Level = 'easy' | 'medium' | 'hard' | 'hell';
 
 /**
  * 남길 힌트 수. 니코리 관례대로 초급일수록 힌트를 많이 준다.
  * 유일해·대칭을 지키며 지우다 보면 목표보다 몇 개 더 남을 수 있다 (16개 이하는 유일해가 불가능)
+ * tier = 끝까지 푸는 데 꼭 필요한 기술 단계 (Grade.ts). 힌트 수만으로는 난이도가 갈리지 않아 판마다 채점한다
  */
-export const LEVELS: Record<Level, { label: string; clues: number }> = {
-  easy: { label: '초급', clues: 46 },
-  medium: { label: '중급', clues: 32 },
-  hard: { label: '고급', clues: 26 },
+export const LEVELS: Record<Level, { label: string; clues: number; tier: Tier }> = {
+  easy: { label: '초급', clues: 46, tier: 0 },
+  medium: { label: '중급', clues: 32, tier: 1 },
+  hard: { label: '고급', clues: 26, tier: 2 },
+  hell: { label: '지옥', clues: 22, tier: 3 },
 };
 
 /** 한 판에 플레이어마다 쓸 수 있는 힌트 수 */
@@ -129,21 +133,24 @@ export function mulberry32(seed: number): () => number {
 /**
  * 랜덤 완성판 → 유일해가 깨지지 않는 칸만 무작위로 지워 목표 힌트 수까지.
  * 니코리 관례대로 힌트 배치가 180° 회전 대칭이 되도록 i 와 80-i 를 함께 지운다.
+ * 끝까지 푸는 데 꼭 필요한 기술 단계(Grade.ts)가 난이도의 tier 와 다르면 다시 만든다.
  */
 export function generate(level: Level, rand: () => number = Math.random): { puzzle: Grid; solution: Grid } {
-  const solution: Grid = [];
-  search(new Array(81).fill(0), 1, solution, rand);
-  const puzzle = solution.slice();
-  let clues = 81;
-  for (const i of shuffle([...Array(41).keys()], rand)) {
-    if (clues <= LEVELS[level].clues) break;
-    const pair = i === 40 ? [40] : [i, 80 - i];
-    const saved = pair.map((k) => puzzle[k]);
-    for (const k of pair) puzzle[k] = 0;
-    if (countSolutions(puzzle) === 1) clues -= pair.length;
-    else pair.forEach((k, n) => (puzzle[k] = saved[n]));
+  for (;;) {
+    const solution: Grid = [];
+    search(new Array(81).fill(0), 1, solution, rand);
+    const puzzle = solution.slice();
+    let clues = 81;
+    for (const i of shuffle([...Array(41).keys()], rand)) {
+      if (clues <= LEVELS[level].clues) break;
+      const pair = i === 40 ? [40] : [i, 80 - i];
+      const saved = pair.map((k) => puzzle[k]);
+      for (const k of pair) puzzle[k] = 0;
+      if (countSolutions(puzzle) === 1) clues -= pair.length;
+      else pair.forEach((k, n) => (puzzle[k] = saved[n]));
+    }
+    if (grade(puzzle) === LEVELS[level].tier) return { puzzle, solution };
   }
-  return { puzzle, solution };
 }
 
 export const toStr = (g: Grid): string => g.join('');

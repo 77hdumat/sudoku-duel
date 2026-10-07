@@ -297,7 +297,7 @@ input:focus {
 }
 .bots {
   display: grid;
-  grid-template-columns: repeat(3, 220px);
+  grid-template-columns: repeat(4, 200px);
   gap: 18px;
 }
 .bot {
@@ -335,6 +335,9 @@ input:focus {
 }
 .bot.hard:hover {
   border-color: #ff4d5e;
+}
+.bot.hell:hover {
+  border-color: #7a1f2b;
 }
 
 /* ── 게임 화면 */
@@ -1038,6 +1041,10 @@ input {
 }
 .bot.hard {
   --block: #f9c2c8;
+}
+.bot.hell {
+  --block: #3b2a33;
+  color: #fff;
 }
 [data-theme='night'] #single,
 [data-theme='night'] .bot.medium {

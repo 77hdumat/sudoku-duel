@@ -324,8 +324,6 @@ interface PlayOpts {
   /** 아이템전: HUD 에 콤보 게이지 */
   meter?: ComboMeter;
   hints?: number;
-  /** 자동 메모 버튼 — 없으면 고급만 */
-  autoNotes?: boolean;
   onQuit(): void;
 }
 
@@ -347,7 +345,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     </main>
     ${o.chat ? '<aside class="chat-slot" id="chat-slot"></aside>' : ''}
   </div>`);
-  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, o.autoNotes ?? o.level === 'hard', o.hints);
+  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, o.level === 'hell', o.hints);
   board.setColor(o.color);
   const timer = $('#timer')!;
   let t0 = 0;
@@ -449,9 +447,10 @@ interface Racer extends Entry {
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 const LEVEL_DESC: Record<Level, string> = {
-  easy: `처음부터 채워진 숫자 ${LEVELS.easy.clues}개 안팎.`,
-  medium: `처음부터 채워진 숫자 ${LEVELS.medium.clues}개 안팎.`,
-  hard: `처음부터 채워진 숫자 ${LEVELS.hard.clues}개 안팎.`,
+  easy: `채워진 숫자 ${LEVELS.easy.clues}개 안팎 · 드러난/숨겨진 하나만으로 풀려요.`,
+  medium: `채워진 숫자 ${LEVELS.medium.clues}개 안팎 · 교차로나 부분집합(쌍·삼총사)이 꼭 한 번은 필요해요.`,
+  hard: `채워진 숫자 ${LEVELS.hard.clues}개 안팎 · X-윙·황새치·XY-윙 같은 패턴 없이는 막혀요.`,
+  hell: `채워진 숫자 ${LEVELS.hell.clues}개 안팎 · 윙까지 다 써도 막혀서 사슬·컬러링급 추론이 필요해요. ✨ 자동 메모는 지옥에서만!`,
 };
 
 /** 완주 기록 옆 벌점 설명: " · 3:12 + 실수 2 (+20초)" */
@@ -697,8 +696,6 @@ interface Room {
   rule: Rule;
   /** 판당 힌트 수 (방장이 고른다) */
   hints: number;
-  /** 자동 메모 허용 (방장이 고른다, 난이도와 상관없이) */
-  auto: boolean;
   /** 지금 판 (게임 중에 들어온 관전자에게 보낼 용도) */
   puzzle: string;
   /** 플레이어별 최신 판 상태 — 방장(중계·스냅샷용)과 관전자만 쓴다 */
@@ -760,7 +757,6 @@ function newRoom(host: boolean, watching = false): Room {
     level: 'medium',
     rule: 'claim',
     hints: HINTS,
-    auto: true,
     puzzle: '',
     views: new Map(),
     phase: 'lobby',
@@ -913,16 +909,16 @@ function createRoom(): void {
 
 function broadcastLobby(): void {
   if (!room || !net) return;
-  net.broadcast({ t: 'lobby', players: room.players, watchers: room.watchers, level: room.level, rule: room.rule, hints: room.hints, auto: room.auto });
+  net.broadcast({ t: 'lobby', players: room.players, watchers: room.watchers, level: room.level, rule: room.rule, hints: room.hints });
   refreshPlayers();
 }
 
 function hostStart(): void {
   if (!room || !net) return;
   const { puzzle, solution } = generate(room.level);
-  const m: Msg = { t: 'start', puzzle: toStr(puzzle), level: room.level, rule: room.rule, hints: room.hints, auto: room.auto };
+  const m: Msg = { t: 'start', puzzle: toStr(puzzle), level: room.level, rule: room.rule, hints: room.hints };
   net.broadcast(m);
-  startMulti(m.puzzle, m.level, m.rule, m.hints, m.auto);
+  startMulti(m.puzzle, m.level, m.rule, m.hints);
   room.judge = room.rule === 'claim' ? new ClaimJudge(puzzle, solution, FREEZE_MS, room.hints) : null;
 }
 
@@ -937,7 +933,7 @@ function relayView(m: { t: 'view'; id: number; grid: string; notes: string }): v
 function sendWatch(id: number): void {
   const r = room;
   if (!r || !net) return;
-  net.sendTo(id, { t: 'watch', puzzle: r.puzzle, level: r.level, rule: r.rule, hints: r.hints, auto: r.auto, ms: r.play?.elapsed() ?? 0, rows: currentRows() });
+  net.sendTo(id, { t: 'watch', puzzle: r.puzzle, level: r.level, rule: r.rule, hints: r.hints, ms: r.play?.elapsed() ?? 0, rows: currentRows() });
   for (const [pid, v] of r.views) net.sendTo(id, { t: 'view', id: pid, ...v });
   if (r.result) net.sendTo(id, { t: 'result', rows: r.result });
 }
@@ -1045,7 +1041,6 @@ function joinRoom(code: string, watch = false): void {
         r.level = m.level;
         r.rule = m.rule;
         r.hints = m.hints ?? HINTS;
-        r.auto = m.auto ?? true;
         if (first) {
           addChat(`${code} 방에 ${watch ? '관전하러 ' : ''}들어왔어요.`);
           lobby();
@@ -1053,7 +1048,7 @@ function joinRoom(code: string, watch = false): void {
         return;
       }
       case 'start':
-        return watch ? startWatch(m.puzzle, m.level, m.rule, m.hints, -3000) : startMulti(m.puzzle, m.level, m.rule, m.hints, m.auto);
+        return watch ? startWatch(m.puzzle, m.level, m.rule, m.hints, -3000) : startMulti(m.puzzle, m.level, m.rule, m.hints);
       case 'watch':
         return startWatch(m.puzzle, m.level, m.rule, m.hints, m.ms, m.rows);
       case 'view':
@@ -1106,8 +1101,6 @@ function lobby(): void {
       <p class="hint" id="level-desc"></p>
       <h3>힌트</h3>
       <div class="levels" id="hints">${HINT_OPTIONS.map((n) => `<button data-hints="${n}" ${r.host ? '' : 'disabled'}>${n ? `${n}번` : '없음'}</button>`).join('')}</div>
-      <h3>✨ 자동 메모</h3>
-      <div class="levels" id="auto">${[true, false].map((on) => `<button data-auto="${on ? 1 : 0}" ${r.host ? '' : 'disabled'}>${on ? '허용' : '금지'}</button>`).join('')}</div>
       ${r.host ? '<button class="primary" id="start">시작하기</button><p class="hint" id="start-hint"></p>' : `<p class="hint">${r.watching ? '관전 중이에요. 방장이 시작하면 모든 플레이어의 판과 메모를 볼 수 있어요.' : '방장이 시작하면 같은 퍼즐이 동시에 열려요.'}</p>`}
     </section>
     <aside class="chat-slot" id="chat-slot"></aside>
@@ -1134,13 +1127,6 @@ function lobby(): void {
       (b) =>
         (b.onclick = () => {
           r.hints = Number(b.dataset.hints);
-          broadcastLobby();
-        }),
-    );
-    app.querySelectorAll<HTMLButtonElement>('[data-auto]').forEach(
-      (b) =>
-        (b.onclick = () => {
-          r.auto = b.dataset.auto === '1';
           broadcastLobby();
         }),
     );
@@ -1184,7 +1170,6 @@ function refreshPlayers(): void {
           .join('')}</ul>`
       : '';
     app.querySelectorAll<HTMLButtonElement>('#hints [data-hints]').forEach((b) => b.classList.toggle('on', Number(b.dataset.hints) === r.hints));
-    app.querySelectorAll<HTMLButtonElement>('#auto [data-auto]').forEach((b) => b.classList.toggle('on', (b.dataset.auto === '1') === r.auto));
     $('#level-desc')!.textContent = LEVEL_DESC[r.level];
     app.querySelectorAll<HTMLButtonElement>('#levels [data-level]').forEach((b) => b.classList.toggle('on', b.dataset.level === r.level));
     app.querySelectorAll<HTMLButtonElement>('#rules [data-rule]').forEach((b) => b.classList.toggle('on', b.dataset.rule === r.rule));
@@ -1338,10 +1323,9 @@ function beginRound(puzzleStr: string, level: Level, rule: Rule, hints: number):
   return { puzzle, solution };
 }
 
-function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number, auto: boolean): void {
+function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number): void {
   if (!room || !net) return;
   const r = room;
-  r.auto = auto !== false;
   const round = beginRound(puzzleStr, level, rule, hints);
   if (!round) return;
   const { puzzle, solution } = round;
@@ -1350,7 +1334,6 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number, 
   r.play = play(puzzle, solution, {
     level,
     hints: r.hints,
-    autoNotes: r.auto,
     color: colorOf(r.myId),
     tag: RULES[rule].label,
     chat: true,
@@ -1407,7 +1390,7 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number, 
   const endNow = $('#end-now');
   if (endNow) endNow.onclick = () => endGame();
   $('#chat-slot')!.appendChild(r.chat);
-  addChat(`${LEVELS[level].label} · ${RULES[rule].label} · ${r.hints ? `힌트 ${r.hints}번` : '힌트 없음'}${r.auto ? '' : ' · 자동 메모 금지'} 시작!`);
+  addChat(`${LEVELS[level].label} · ${RULES[rule].label} · ${r.hints ? `힌트 ${r.hints}번` : '힌트 없음'} 시작!`);
   refreshPlayers();
 }
 

@@ -21,6 +21,7 @@ export const AI_PROFILES: Record<Level, AiProfile> = {
   easy: { name: '꼬마봇', avatar: 'assets/bot-easy.svg', blurb: '느긋하게 풀고 가끔 실수해요', sec: 9, mistake: 0.08, stall: 12 },
   medium: { name: '스도봇', avatar: 'assets/bot-medium.svg', blurb: '꾸준한 속도의 모범생', sec: 6, mistake: 0.04, stall: 26 },
   hard: { name: '마스터봇', avatar: 'assets/bot-hard.svg', blurb: '몰아칠 땐 빠르고 거의 틀리지 않아요', sec: 4, mistake: 0.015, stall: 50 },
+  hell: { name: '지옥봇', avatar: 'assets/bot-hard.svg', blurb: '자동 메모를 써도 쉽지 않을걸요', sec: 3, mistake: 0.01, stall: 80 },
 };
 
 /**
