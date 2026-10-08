@@ -129,8 +129,13 @@ function menu(notice = ''): void {
   };
   $('#watch')!.onclick = () => join(true);
   app.querySelectorAll<HTMLButtonElement>('[data-theme-id]').forEach((b) => (b.onclick = () => setTheme(b.dataset.themeId!)));
+  // 초대 링크(?r=코드)로 열면 바로 참가 — 주소에서 지워서 메뉴로 돌아와도 다시 들어가지 않게
   const r = new URLSearchParams(location.search).get('r');
-  if (r) $<HTMLInputElement>('#code')!.value = r.toUpperCase();
+  if (r) {
+    history.replaceState(null, '', location.pathname);
+    $<HTMLInputElement>('#code')!.value = r.toUpperCase();
+    join(false);
+  }
 }
 
 // ───────────────────────── 이펙트 ─────────────────────────
@@ -1288,7 +1293,7 @@ function lobby(): void {
   <div class="screen lobby">
     <section class="lobby-main">
       <button class="ghost back" id="leave">← 나가기</button>
-      <div class="code-box"><small>방 코드</small><b id="code">${esc(net.code)}</b><button class="ghost" id="copy">복사</button></div>
+      <div class="code-box"><small>방 코드</small><b id="code">${esc(net.code)}</b><button class="ghost" id="copy">${location.protocol === 'file:' ? '복사' : '링크 복사'}</button></div>
       <h3>참가자 <span id="count"></span></h3>
       <ul class="players" id="players"></ul>
       <div id="watchers"></div>
@@ -1308,7 +1313,9 @@ function lobby(): void {
   </div>`);
   $('#chat-slot')!.appendChild(r.chat);
   $('#leave')!.onclick = () => menu();
-  $('#copy')!.onclick = () => void navigator.clipboard?.writeText(net?.code ?? '');
+  // 웹이면 초대 링크(열면 바로 참가), 데스크톱 앱(file://)이면 코드만
+  $('#copy')!.onclick = () =>
+    void navigator.clipboard?.writeText(location.protocol === 'file:' ? (net?.code ?? '') : `${location.origin}${location.pathname}?r=${net?.code ?? ''}`);
   if (r.host) {
     app.querySelectorAll<HTMLButtonElement>('[data-level]').forEach(
       (b) =>
