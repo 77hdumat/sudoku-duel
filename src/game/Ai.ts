@@ -22,7 +22,7 @@ export const AI_PROFILES: Record<Level, AiProfile> = {
   medium: { name: '스도봇', avatar: 'assets/bot-medium.svg', blurb: '꾸준한 속도의 모범생', sec: 6, mistake: 0.04, stall: 26 },
   hard: { name: '마스터봇', avatar: 'assets/bot-hard.svg', blurb: '몰아칠 땐 빠르고 거의 틀리지 않아요', sec: 4, mistake: 0.015, stall: 50 },
   hell: { name: '지옥봇', avatar: 'assets/bot-hell.svg', blurb: '자동 메모를 써도 쉽지 않을걸요', sec: 3, mistake: 0.003, stall: 80 },
-  king: { name: '변성대왕', avatar: 'assets/bot-king.svg', blurb: 'AIC 로도 안 풀리는 판만 골라 와요', sec: 2.5, mistake: 0.005, stall: 120 },
+  king: { name: '변성대왕', avatar: 'assets/bot-king.svg', blurb: '🏆 대회 룰 · 다 채우면 한 번에 채점해요', sec: 2.5, mistake: 0.005, stall: 120 },
 };
 
 /**
