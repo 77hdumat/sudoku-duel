@@ -215,10 +215,7 @@ function wireInputSounds(board: Board): void {
 function wirePersonalFx(board: Board, color: string, meter?: ComboMeter, onAttack?: () => void): void {
   board.onCorrect = (i, hint, units) => {
     // 변성대왕(채점 숨김)은 힌트·풀이로 정답이 드러날 때만 여기 온다 — 불꽃으로
-    if (document.querySelector('.play.king')) {
-      sfx.hint();
-      return hellFire(board, i);
-    }
+    if (document.querySelector('.play.king')) return hellFire(board, i);
     combo = hint ? combo : combo + 1;
     if (hint) sfx.hint();
     else sfx.correct(combo - 1);

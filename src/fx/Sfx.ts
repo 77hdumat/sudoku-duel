@@ -77,6 +77,8 @@ const calm = {
   /** 첫 클릭 때 오디오를 깨워 둔다 */
   unlock(): void {
     ac();
+    // 변성대왕 녹음을 미리 받아 둔다 — 카운트다운 첫 소리부터 녹음으로 나오게
+    SAMPLES.forEach(load);
   },
 
   click(): void {
@@ -154,12 +156,12 @@ const calm = {
  * 변성대왕 녹음 소리 (public/assets/sfx, Pixabay Content License — 앞부분만 잘라 모노로 줄였다):
  * gong = Asian Gong (freesound_community, 102397) · heartbeat = Heartbeat Single (universfield, 383748)
  * bone = Bone Crack 1 (freesound_community, 84755) · growl = Monster Growl (dragon-studio, 376892)
- * bell = Single Church Bell 2 (universfield, 352062) · whisper = Creepy Whisper (dragon-studio, 472369)
+ * bell = Single Church Bell 2 (universfield, 352062)
  * laugh = Evil Laugh (dragon-studio, 431480) · cackle = Evil Laugh (freesound_community, 89423)
  * choir = Dark Choir Singing (freesound_community, 16805)
  * fire = Fire Ignite Whoosh (biww, 561960) · inferno = Big Fire Blast Whoosh (biww, 561961)
  */
-const SAMPLES = ['gong', 'heartbeat', 'bone', 'growl', 'bell', 'whisper', 'laugh', 'cackle', 'choir', 'fire', 'inferno'];
+const SAMPLES = ['gong', 'heartbeat', 'bone', 'growl', 'bell', 'laugh', 'cackle', 'choir', 'fire', 'inferno'];
 const buffers = new Map<string, AudioBuffer | null>();
 
 function load(name: string): void {
@@ -226,11 +228,8 @@ const dreadful: Partial<typeof calm> = {
     [12, 9, 6, 3, 0].forEach((n, i) => tone(st(C5, n - 12), i * 0.09, 0.45, 'triangle', 0.26));
     bell(st(C5, -24), 0.45, 1.4, 0.3);
   },
-  hint(): void {
-    if (sample('whisper', 1.2)) return;
-    noise(0, 0.9, 1400, 0.7, 0.18);
-    tone(st(C5, -12), 0, 0.9, 'sine', 0.16, st(C5, -6));
-  },
+  // 힌트·풀이·자동 메모는 따로 소리 없이 — 정답 칸에서 솟는 불 소리만
+  hint(): void {},
   countdown(last = false): void {
     // 시작 신호는 징, 그 전엔 심장 소리
     if (sample(last ? 'gong' : 'heartbeat', last ? 1 : 1.2)) return;
