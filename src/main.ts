@@ -495,6 +495,8 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
   const cdNum = (txt: string) => (cd.querySelector('b')!.outerHTML = `<b>${txt}</b>`);
   let n = 3;
   sfx.countdown();
+  // 카운트다운 내내 뒤의 해골들이 킬킬댄다
+  if (cdFace) fx.cackle(3000);
   const cdT = setInterval(() => {
     n--;
     if (n > 0) {
