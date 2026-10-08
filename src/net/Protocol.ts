@@ -16,8 +16,8 @@ export const isRace = (r: Rule) => r !== 'claim';
 
 export const RULES: Record<Rule, { label: string; desc: string }> = {
   claim: { label: '점령형', desc: '한 판을 같이 채워요. 맞히면 +1, 틀리면 -1 에 2초 정지. 판이 다 차면 점수가 높은 사람이 승리!' },
-  race: { label: '레이스형', desc: '같은 퍼즐을 각자 풀어요. 기록 = 완주 시간 + 실수당 10초. 모두 끝나면 순위 발표!' },
-  item: { label: '아이템전', desc: '레이스형 + 5초 안에 3연속으로 맞히면 나 빼고 전원에게 침 퉤! 맞은 사람은 1.5초 동안 판이 안 보여요(또 맞으면 늘어나요). 실수당 +10초.' },
+  race: { label: '레이스형', desc: '같은 퍼즐을 각자 풀어요. 기록 = 완주 시간 + 실수당 30초. 모두 끝나면 순위 발표!' },
+  item: { label: '아이템전', desc: '레이스형 + 5초 안에 3연속으로 맞히면 나 빼고 전원에게 침 퉤! 맞은 사람은 1.5초 동안 판이 안 보여요(또 맞으면 늘어나요). 실수당 +30초.' },
 };
 
 export const MAX_PLAYERS = 5;

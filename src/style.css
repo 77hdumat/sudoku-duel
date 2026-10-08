@@ -852,6 +852,8 @@ input:focus {
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
+  /* 숫자 칸과 도구 줄 사이 숨 쉴 틈 */
+  margin-top: 10px;
 }
 .tool {
   min-width: 0;
@@ -2462,6 +2464,12 @@ textarea {
 }
 
 /* ── 변성대왕: 지옥 테마 — 검붉은 판, 용암처럼 숨 쉬는 테두리, 화면 아래에서 올라오는 붉은 빛 */
+body:has(.play.king) {
+  background: radial-gradient(ellipse at 50% 30%, #3a0c0c, #120304 70%);
+}
+.play.king .timer {
+  color: #f2d27a;
+}
 .play.king::before {
   content: '';
   position: fixed;

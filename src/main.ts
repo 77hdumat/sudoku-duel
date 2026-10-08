@@ -83,6 +83,7 @@ function show(html: string): void {
   cleanup?.();
   cleanup = null;
   app.innerHTML = html;
+  fx.setHell(!!app.querySelector('.play.king'));
 }
 
 // ───────────────────────── 메뉴 ─────────────────────────
@@ -386,7 +387,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         ${o.onGiveUp ? '<button class="ghost" id="giveup">포기</button>' : ''}
         <button class="ghost" id="quit">나가기</button>
       </div>
-      ${o.level === 'hell' && !o.shared && store.get('noGuess.hell', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 지옥: 실수 하나에 +7분!<br />찍지 말고 추론으로 풀어 주세요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
+      ${o.level === 'hell' && !o.shared && store.get('noGuess.hell', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 지옥: 찍지 말고 추론으로 풀어 주세요.<br />실수 하나에 +30초!<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
       ${o.level === 'king' && store.get('noGuess.king', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요. 틀려도 바로 알려 주지 않아요.<br />다 채우면 채점하고, 틀린 칸 하나에 +7분이에요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
       <div class="board-wrap"><div class="board" id="board"></div><div class="countdown" id="cd"><b>3</b></div><div class="banner" id="banner"></div></div>
       <div class="pad" id="pad"></div>
@@ -555,7 +556,7 @@ const LEVEL_DESC: Record<Level, string> = {
   easy: `채워진 숫자 ${LEVELS.easy.clues}개 안팎 · 드러난/숨겨진 하나만으로 풀려요.`,
   medium: `채워진 숫자 ${LEVELS.medium.clues}개 안팎 · 교차로나 부분집합(쌍·삼총사)이 꼭 한 번은 필요해요.`,
   hard: `채워진 숫자 ${LEVELS.hard.clues}개 안팎 · X-윙·황새치·XY-윙 같은 패턴 없이는 막혀요.`,
-  hell: `더 지우면 답이 여러 개가 될 때까지 숫자를 깎은 판 · 윙으로도 막혀서 W-윙·핀드 X-윙·X/XY-사슬이 필요해요. 실수 하나에 +7분! ✨ 자동 메모 가능`,
+  hell: `더 지우면 답이 여러 개가 될 때까지 숫자를 깎은 판 · 윙으로도 막혀서 W-윙·핀드 X-윙·X/XY-사슬이 필요해요. 실수 하나에 +30초! ✨ 자동 메모 가능`,
   king: `더 지우면 답이 여러 개가 될 때까지 숫자를 깎은 판 · 교대 추론 사슬(AIC)까지 다 써도 막히는 곳이 5군데 이상 — 포싱 체인 같은 초고급 기술을 계속 써야 풀려요. 대회 극악 판 AI Escargot 급이에요. 🏆 대회 룰: 틀려도 바로 안 알려 주고, 다 채우면 한 번에 채점해요. ✨ 자동 메모 가능`,
 };
 
@@ -563,7 +564,7 @@ const LEVEL_DESC6: Partial<Record<Level, string>> = {
   easy: '6×6 · 숫자 1~6, 2×3 박스 · 채워진 숫자 20개.',
   medium: '6×6 · 채워진 숫자 12개 안팎 · 드러난/숨겨진 하나만으로 풀려요.',
   hard: '6×6 · 채워진 숫자 10개 안팎 · 교차로·부분집합 같은 기술이 꼭 필요해요. ✨ 자동 메모 가능',
-  hell: '6×6 · W-윙·X-사슬 같은 중급 사슬이 꼭 필요해요. 실수 하나에 +7분! ✨ 자동 메모 가능',
+  hell: '6×6 · W-윙·X-사슬 같은 중급 사슬이 꼭 필요해요. 실수 하나에 +30초! ✨ 자동 메모 가능',
   king: '6×6 · 교대 추론 사슬(AIC)까지 필요하거나 그걸로도 막혀요. 🏆 대회 룰: 틀려도 바로 안 알려 주고, 다 채우면 한 번에 채점해요. ✨ 자동 메모 가능',
 };
 

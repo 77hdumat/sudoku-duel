@@ -169,6 +169,9 @@ export class Fx {
   private pools: ParticlePool[] = [];
   private blocks: UiBlocks | null = null;
   private floaters: Floater[] = [];
+  /** 평소 배경(숫자 블록·비눗방울·별·하트) / 변성대왕 배경(해골·뼈·불씨) — 화면에 따라 한쪽만 보인다 */
+  private calm: THREE.Object3D[] = [];
+  private hell: THREE.Object3D[] = [];
   private tinted: THREE.MeshStandardMaterial[] = [];
   private tweens: Tween[] = [];
   private palette = PALETTES.paper;
@@ -265,7 +268,83 @@ export class Fx {
       const [x, y, z] = spot(-26, -3);
       this.addFloater(new THREE.Mesh(k % 3 ? star : heart, mat), x, y, z, rand(0.35, 0.65), false);
     }
+    this.calm = this.floaters.map((f) => f.obj);
+
+    // 변성대왕: 해골·뼈다귀가 떠다니고 불씨가 피어오른다
+    const bone = new THREE.MeshStandardMaterial({ color: 0xe6dcc3, roughness: 0.75 });
+    const hole = new THREE.MeshStandardMaterial({ color: 0x140303, roughness: 1 });
+    const eyeGlow = new THREE.MeshBasicMaterial({ color: 0xff3010 });
+    const sphere = new THREE.SphereGeometry(1, 20, 14);
+    const skull = (): THREE.Group => {
+      const g = new THREE.Group();
+      const head = new THREE.Mesh(sphere, bone);
+      head.scale.set(0.9, 0.85, 0.9);
+      head.position.y = 0.2;
+      const jaw = new THREE.Mesh(new RoundedBoxGeometry(1.05, 0.55, 0.8, 2, 0.18), bone);
+      jaw.position.set(0, -0.55, 0.12);
+      g.add(head, jaw);
+      for (const s of [-1, 1]) {
+        const socket = new THREE.Mesh(sphere, hole);
+        socket.scale.set(0.24, 0.27, 0.12);
+        socket.position.set(s * 0.33, 0.05, 0.78);
+        const ember = new THREE.Mesh(sphere, eyeGlow);
+        ember.scale.setScalar(0.07);
+        ember.position.set(s * 0.33, 0.05, 0.86);
+        g.add(socket, ember);
+      }
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.2, 3), hole);
+      nose.rotation.z = Math.PI;
+      nose.position.set(0, -0.2, 0.86);
+      g.add(nose);
+      for (let k = 0; k < 6; k++) {
+        const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.16, 0.05), hole);
+        tooth.position.set(-0.3 + k * 0.12, -0.48, 0.52);
+        tooth.scale.set(0.35, 1, 1);
+        g.add(tooth);
+      }
+      return g;
+    };
+    const boneGeo = new THREE.CylinderGeometry(0.13, 0.13, 2, 10);
+    const knob = new THREE.SphereGeometry(0.22, 12, 10);
+    const boneMesh = (): THREE.Group => {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(boneGeo, bone));
+      for (const y of [-1, 1]) for (const x of [-0.13, 0.13]) {
+        const k = new THREE.Mesh(knob, bone);
+        k.position.set(x, y, 0);
+        g.add(k);
+      }
+      return g;
+    };
+    const before = this.floaters.length;
+    for (let k = 0; k < (reduceMotion ? 6 : light ? 10 : 22); k++) {
+      const [x, y, z] = spot(-30, -4);
+      this.addFloater(skull(), x, y, z, rand(0.6, 1.3), false);
+      // 해골은 굴러다니지 않고 이쪽을 노려본 채 살짝 고개만 기울인다
+      const f = this.floaters[this.floaters.length - 1];
+      f.obj.rotation.set(rand(-0.25, 0.25), rand(-0.5, 0.5), rand(-0.3, 0.3));
+      f.spin.set(0, 0, 0);
+    }
+    for (let k = 0; k < (reduceMotion ? 6 : light ? 10 : 24); k++) {
+      const [x, y, z] = spot(-28, -3);
+      this.addFloater(boneMesh(), x, y, z, rand(0.4, 0.9), false);
+    }
+    const ash = new THREE.SphereGeometry(0.18, 10, 8);
+    for (let k = 0; k < (reduceMotion ? 10 : light ? 20 : 50); k++) {
+      const [x, y, z] = spot(-24, -2);
+      const glow = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(rand(0, 0.09), 1, rand(0.45, 0.6)), transparent: true, opacity: rand(0.5, 0.95), blending: THREE.AdditiveBlending, depthWrite: false });
+      this.addFloater(new THREE.Mesh(ash, glow), x, y, z, rand(0.5, 1.4), true);
+    }
+    this.hell = this.floaters.slice(before).map((f) => f.obj);
+    this.setHell(false);
     this.recolor();
+  }
+
+  /** 변성대왕 게임 화면이면 배경을 해골·뼈·불씨로 */
+  setHell(on: boolean): void {
+    if (!this.ok) return;
+    for (const o of this.calm) o.visible = !on;
+    for (const o of this.hell) o.visible = on;
   }
 
   private addFloater(obj: THREE.Object3D, x: number, y: number, z: number, s: number, rise: boolean): void {
