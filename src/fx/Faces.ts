@@ -156,7 +156,8 @@ const LOOKS: Record<string, Look> = {
     extra(g) {
       // 변성대왕: 검은 갓(넓은 챙 + 높은 대우) + 금빛 띠 + 王 패, 길게 늘어진 검은 수염과 팔자 콧수염
       // 갓은 말총으로 엮어 비쳐 보인다 — 반투명 검정
-      const black = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3, metalness: 0.2, transparent: true, opacity: 0.88 });
+      // depthWrite 를 끄는 건 뒤 불길이 고개를 들거나 숙여 넓어진 챙에 가려 사라지지 않게
+      const black = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3, metalness: 0.2, transparent: true, opacity: 0.88, depthWrite: false });
       const brim = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 0.04, 48), black);
       brim.position.y = 0.64;
       brim.rotation.x = 0.1;
@@ -343,6 +344,7 @@ export class Face {
       ]) {
         const f = new Fire(0xff7a40);
         f.material.depthTest = true;
+        f.renderOrder = 1; // 갓보다 나중에 그려 갓 챙 너머로도 보이게
         f.visible = false;
         this.root.add(f);
         this.aura.push({ f, x, y, w, h: hh, seed: Math.random() * 10 });
