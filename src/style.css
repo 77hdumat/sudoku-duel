@@ -2582,6 +2582,25 @@ body:has(.play.king) {
   text-align: center;
   word-break: keep-all;
 }
+/* 분노: 판이 붉게 달아오르고 얼굴이 부들부들 떤다 */
+.king-says.rage {
+  background: radial-gradient(circle, rgba(229, 48, 63, 0.45), rgba(60, 0, 8, 0.75) 75%);
+}
+.king-says.rage .king-face {
+  width: min(52%, 240px);
+  filter: drop-shadow(0 0 28px #ff1f45);
+  animation: rage-shake 0.09s linear infinite;
+}
+.king-says.rage p {
+  font-size: clamp(15px, 4.2vw, 20px);
+  color: #fff;
+  border-width: 2.5px;
+}
+@keyframes rage-shake {
+  0% { transform: translate(-3px, 1px); }
+  50% { transform: translate(3px, -1px); }
+  100% { transform: translate(-3px, 1px); }
+}
 @keyframes king-says {
   0% {
     opacity: 0;
@@ -2599,7 +2618,8 @@ body:has(.play.king) {
 }
 @media (prefers-reduced-motion: reduce) {
   .king-says,
-  .king-says .king-face {
+  .king-says .king-face,
+  .king-says.rage .king-face {
     animation: none;
   }
 }

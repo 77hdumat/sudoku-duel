@@ -354,6 +354,13 @@ export class Board {
     this.onChange?.(this.filled, this.mistakes);
   }
 
+  /** 주어진 칸들을 비운다 (되돌리기로 살릴 수 없게 기록에서도 지운다) */
+  wipe(cells: number[]): void {
+    for (const g of [this.grid, ...this.history.map((h) => h.grid)]) for (const i of cells) if (!this.given[i]) g[i] = 0;
+    this.render();
+    this.onChange?.(this.filled, this.mistakes);
+  }
+
   /** 맞게 채운 숫자만 남긴 판 (풀이·힌트 계산용) */
   known(): Grid {
     return this.grid.map((v, k) => (this.done(k) ? v : 0));

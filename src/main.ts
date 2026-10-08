@@ -173,18 +173,37 @@ const KING_LINES: [number, string[]][] = [
 ];
 
 /** 판 위로 변성대왕 얼굴이 떠올라 대사를 치고 사라진다 (클릭은 그대로 통과 — 재시작·버튼 사용 가능) */
-function kingSays(wrong: number): void {
+function kingSpeak(line: string, cls = '', mood = ''): void {
   const wrap = $('.board-wrap');
   if (!wrap) return;
-  const lines = KING_LINES.find(([max]) => wrong <= max)![1];
   wrap.querySelector('.king-says')?.remove();
   const el = document.createElement('div');
-  el.className = 'king-says';
-  el.innerHTML = `${faceHtml('king', 'king-face', 'laugh')}<p>${lines[Math.floor(Math.random() * lines.length)]}</p>`;
+  el.className = `king-says ${cls}`;
+  el.innerHTML = `${faceHtml('king', 'king-face', mood)}<p>${line}</p>`;
   wrap.appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+
+function kingSays(wrong: number): void {
+  const lines = KING_LINES.find(([max]) => wrong <= max)![1];
+  kingSpeak(lines[Math.floor(Math.random() * lines.length)], '', 'laugh');
   sfx.laugh();
   fx.cackle(3200);
-  setTimeout(() => el.remove(), 4200);
+}
+
+/** 변성대왕: RAGE_MS 안에 RAGE_PUTS 칸 넘게 넣으면 사람 손이 아니다 (키보드로 몰아쳐도 칸당 250ms 는 걸린다) */
+const RAGE_PUTS = 8;
+const RAGE_MS = 2000;
+
+/** 몰아 넣은 칸을 불태워 지우고, 대사가 끝날 때까지 판을 잠근다 */
+function kingRage(board: Board, cells: number[], isOver: () => boolean): void {
+  board.wipe(cells);
+  board.locked = true;
+  for (const i of cells) hellFire(board, i, true);
+  kingSpeak('감히 내 앞에서 요술을 부리느냐! 네 힘으로 풀도록 하거라!', 'rage');
+  sfx.wrong();
+  sfx.inferno();
+  setTimeout(() => !isOver() && (board.locked = false), 4200);
 }
 
 function inferno(board: Board): void {
@@ -423,7 +442,16 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     },
   };
   board.onChange = (f, m) => o.onProgress?.(f, m);
-  if (o.level === 'king') board.onPut = (i) => hellFire(board, i);
+  if (o.level === 'king') {
+    const puts: { t: number; i: number }[] = [];
+    board.onPut = (i) => {
+      const t = performance.now();
+      puts.push({ t, i });
+      while (t - puts[0].t > RAGE_MS) puts.shift();
+      if (puts.length < RAGE_PUTS) return hellFire(board, i);
+      kingRage(board, puts.splice(0).map((p) => p.i), () => h.ended);
+    };
+  }
   board.onChecked = (n) => {
     h.banner(`틀린 칸 ${n}개! 빨간 칸을 고쳐 보세요 (실수 +${n})`);
     setTimeout(() => !h.ended && h.banner(''), 2600);
