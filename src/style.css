@@ -929,7 +929,7 @@ kbd {
   padding: 32px 40px;
   text-align: center;
   box-shadow: var(--shadow);
-  min-width: 360px;
+  width: min(420px, calc(100vw - 32px));
 }
 .dialog h2 {
   margin: 8px 0;
@@ -1291,7 +1291,6 @@ input {
 }
 .standings.final {
   margin: 12px 0 4px;
-  min-width: 320px;
   text-align: left;
 }
 .result-img.dim {
@@ -1688,8 +1687,6 @@ button,
   }
 
   .dialog {
-    min-width: 0;
-    width: min(420px, calc(100vw - 32px));
     padding: 24px 18px;
   }
   .standings.final {
