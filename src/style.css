@@ -1080,6 +1080,14 @@ kbd {
 .chat-log .line {
   word-break: break-word;
 }
+.chat-log .watch-tag {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  vertical-align: 1px;
+}
 .chat-log .sys {
   color: var(--muted);
   font-size: 12px;

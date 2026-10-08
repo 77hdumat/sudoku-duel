@@ -968,7 +968,7 @@ function newRoom(host: boolean, watching = false): Room {
   };
 }
 
-function addChat(m: { id: number; name: string; text: string } | string): void {
+function addChat(m: { id: number; name: string; text: string; watch?: boolean } | string): void {
   if (!room) return;
   const log = room.chat.querySelector('.chat-log')!;
   const line = document.createElement('div');
@@ -980,7 +980,9 @@ function addChat(m: { id: number; name: string; text: string } | string): void {
     const who = document.createElement('b');
     who.textContent = m.name;
     who.style.color = colorOf(m.id);
-    line.append(who, document.createTextNode(' ' + m.text));
+    line.append(who);
+    if (m.watch) line.insertAdjacentHTML('beforeend', ' <span class="watch-tag">관전</span>');
+    line.append(document.createTextNode(' ' + m.text));
     if (m.id !== room.myId) sfx.chat();
   }
   log.appendChild(line);
@@ -1069,10 +1071,11 @@ function createRoom(): void {
         return relayView({ t: 'view', id: from, grid: m.grid, notes: m.notes, sel: selOf(m.sel) });
       }
       case 'chat': {
-        const p = r.players.find((x) => x.id === from) ?? r.watchers.find((x) => x.id === from);
+        const watcher = r.watchers.find((x) => x.id === from);
+        const p = r.players.find((x) => x.id === from) ?? watcher;
         const text = cleanText(m.text, CHAT_MAX);
         if (!p || !text) return;
-        const out: Msg = { t: 'chat', id: from, name: p.name, text };
+        const out: Msg = { t: 'chat', id: from, name: p.name, text, ...(watcher && { watch: true }) };
         n.broadcast(out);
         addChat(out);
         return;

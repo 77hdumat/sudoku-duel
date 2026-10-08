@@ -60,7 +60,7 @@ export type Msg =
   | { t: 'miss'; cell: number; id: number }
   /** 최종 기록 — 순위는 받는 쪽이 규칙대로 정렬한다 (Ranking.ts) */
   | { t: 'result'; rows: ResultRow[] }
-  | { t: 'chat'; id: number; name: string; text: string }
+  | { t: 'chat'; id: number; name: string; text: string; watch?: boolean }
   | { t: 'back' };
 
 export interface ResultRow {
