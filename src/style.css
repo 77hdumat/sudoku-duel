@@ -479,6 +479,30 @@ input:focus {
   text-align: center;
   word-break: keep-all;
   animation: warn-fade 4s ease-in-out infinite;
+  position: relative;
+  padding: 5px 30px;
+}
+/* 끄려고 손을 대면 또렷하게 멈춘다 */
+.no-guess:hover,
+.no-guess:focus-within {
+  animation: none;
+}
+.no-guess-x {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 22px;
+}
+.no-guess-x:hover {
+  background: rgba(229, 48, 63, 0.18);
 }
 /* 천천히 나타났다가 거의 사라지는 숨쉬기 */
 @keyframes warn-fade {
@@ -498,7 +522,7 @@ input:focus {
 @media (max-width: 520px) {
   .no-guess {
     font-size: 11px;
-    padding: 4px 8px;
+    padding: 4px 28px;
   }
 }
 .board-wrap {

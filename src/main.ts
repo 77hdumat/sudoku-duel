@@ -364,8 +364,8 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         ${o.onGiveUp ? '<button class="ghost" id="giveup">포기</button>' : ''}
         <button class="ghost" id="quit">나가기</button>
       </div>
-      ${o.level === 'hell' && !o.shared ? '<p class="no-guess" role="alert">⚠️ 지옥: 실수 하나에 +7분!<br />찍지 말고 추론으로 풀어 주세요.</p>' : ''}
-      ${o.level === 'king' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요. 틀려도 바로 알려 주지 않아요.<br />모든 정답은 추론에 기반해서 풀어 주세요. 다 채우면 채점해요.</p>' : ''}
+      ${o.level === 'hell' && !o.shared && store.get('noGuess.hell', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 지옥: 실수 하나에 +7분!<br />찍지 말고 추론으로 풀어 주세요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
+      ${o.level === 'king' && store.get('noGuess.king', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요. 틀려도 바로 알려 주지 않아요.<br />모든 정답은 추론에 기반해서 풀어 주세요. 다 채우면 채점해요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
       <div class="board-wrap"><div class="board" id="board"></div><div class="countdown" id="cd"><b>3</b></div><div class="banner" id="banner"></div></div>
       <div class="pad" id="pad"></div>
     </main>
@@ -453,6 +453,12 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     o.onSolved?.(ms);
   };
   $('#quit')!.onclick = () => o.onQuit();
+  const noGuessX = document.querySelector<HTMLButtonElement>('.no-guess-x');
+  if (noGuessX)
+    noGuessX.onclick = () => {
+      store.set(`noGuess.${o.level}`, 'off');
+      noGuessX.parentElement!.remove();
+    };
   const giveBtn = $('#giveup');
   if (giveBtn && o.onGiveUp) giveBtn.onclick = () => started && !h.ended && o.onGiveUp!();
 

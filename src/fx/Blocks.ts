@@ -10,7 +10,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
  * 블록 두께는 아래로 삐져나온 어두운 몸통(같은 색을 어둡게, 조명 없이)으로 보여 테두리가 뿌옇지 않다.
  */
 
-const SELECTOR = '#app button, #mute';
+const SELECTOR = '#app button:not(.no-guess-x), #mute';
 
 interface Blk {
   el: HTMLButtonElement;
