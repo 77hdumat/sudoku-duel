@@ -230,6 +230,7 @@ export class Face {
   private fire: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>[] = [];
   private mood = 0;
   private hov = 0;
+  private smk = 0;
   private blinkAt = 1 + Math.random() * 3;
 
   constructor(
@@ -318,14 +319,15 @@ export class Face {
 
   /**
    * 매 프레임: hover 0..1 = 마우스를 올렸을 때 봇마다 다른 반응, laugh 0..1 = 비웃으며 크크크 (변성대왕 도발).
-   * gaze = 마우스 방향(-1..1). 평소에도 봇마다 바라보는 곳이 다르다.
+   * gaze = 마우스 방향(-1..1). 평소에도 봇마다 바라보는 곳이 다르다. smirk 0..1 = 변성대왕이 한쪽 입꼬리만 올려 씨익.
    */
-  update(dt: number, hover: number, gaze = { x: 0, y: 0 }, laugh = 0): void {
+  update(dt: number, hover: number, gaze = { x: 0, y: 0 }, laugh = 0, smirk = 0): void {
     const L = this.look;
     const t = (performance.now() - t0) / 1000;
     const ease = Math.min(1, dt * 7);
     this.mood += (laugh - this.mood) * ease;
     this.hov += (hover - this.hov) * Math.min(1, dt * 4);
+    this.smk += (smirk - this.smk) * Math.min(1, dt * 5);
     const m = this.mood;
     const h = this.hov * (1 - m);
     const cackle = Math.abs(Math.sin(t * 17));
@@ -427,6 +429,15 @@ export class Face {
           sm.emissiveIntensity = 1.2 + h * 2.5;
         }
         for (const iris of this.irises) iris.scale.setScalar(1 - h * 0.35);
+        // 씨익: 고개를 살짝 숙여 치켜뜨고, 입꼬리 한쪽만 길게 올라간다
+        const sk = this.smk * (1 - h);
+        ey = mix(ey, 0.5, sk);
+        rx = mix(rx, 0.12, sk);
+        rz = mix(rz, -0.06, sk);
+        open = mix(open, 0.7, sk);
+        mouthY = mix(mouthY, 0.16, sk);
+        mouthX = mix(1, 1.25, sk);
+        mouthTilt = mix(mouthTilt, 0.38, sk);
         break;
       }
     }
@@ -553,12 +564,12 @@ function drawAll(dt: number): void {
     const w = Math.round(q.width * dpr);
     if (c.width !== w || c.height !== w) c.width = c.height = w;
     const { scene, face } = slotFor(level, k);
-    // 비웃음: data-mood="laugh". 마우스를 올린 순위 줄이면 봇마다 다른 호버 반응
+    // 비웃음: data-mood="laugh", 씨익: "smirk", 노려봄(호버 반응 그대로): "glare". 마우스를 올린 순위 줄이면 봇마다 다른 호버 반응
     const laugh = c.dataset.mood === 'laugh';
-    const hover = !!c.closest('.stand:hover');
+    const hover = c.dataset.mood === 'glare' || !!c.closest('.stand:hover');
     const gx = Math.max(-1, Math.min(1, (mouse.x - (q.left + q.width / 2)) / 300));
     const gy = Math.max(-1, Math.min(1, -(mouse.y - (q.top + q.height / 2)) / 300));
-    face.update(dt, hover ? 1 : 0, { x: gx, y: gy }, laugh ? 1 : 0);
+    face.update(dt, hover ? 1 : 0, { x: gx, y: gy }, laugh ? 1 : 0, c.dataset.mood === 'smirk' ? 1 : 0);
     st.r.render(scene, c.classList.contains('avatar') ? st.close : st.cam);
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, w, w);

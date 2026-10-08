@@ -173,6 +173,9 @@ export class Fx {
   private calm: THREE.Object3D[] = [];
   private hell: THREE.Object3D[] = [];
   private tinted: THREE.MeshStandardMaterial[] = [];
+  /** 해골 턱 — 변성대왕이 비웃으면 같이 딱딱거린다 */
+  private jaws: THREE.Mesh[] = [];
+  private cackleUntil = 0;
   private tweens: Tween[] = [];
   private palette = PALETTES.paper;
   private mouse = new THREE.Vector2();
@@ -282,6 +285,7 @@ export class Fx {
       head.position.y = 0.2;
       const jaw = new THREE.Mesh(new RoundedBoxGeometry(1.05, 0.55, 0.8, 2, 0.18), bone);
       jaw.position.set(0, -0.55, 0.12);
+      this.jaws.push(jaw);
       g.add(head, jaw);
       for (const s of [-1, 1]) {
         const socket = new THREE.Mesh(sphere, hole);
@@ -298,9 +302,10 @@ export class Fx {
       g.add(nose);
       for (let k = 0; k < 6; k++) {
         const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.16, 0.05), hole);
-        tooth.position.set(-0.3 + k * 0.12, -0.48, 0.52);
+        // 이빨은 턱에 붙여 턱이 벌어질 때 같이 내려간다
+        tooth.position.set(-0.3 + k * 0.12, 0.07, 0.4);
         tooth.scale.set(0.35, 1, 1);
-        g.add(tooth);
+        jaw.add(tooth);
       }
       return g;
     };
@@ -338,6 +343,11 @@ export class Fx {
     this.hell = this.floaters.slice(before).map((f) => f.obj);
     this.setHell(false);
     this.recolor();
+  }
+
+  /** 뒤의 해골들이 턱을 딱딱거리며 같이 비웃는다 */
+  cackle(ms = 3000): void {
+    this.cackleUntil = performance.now() + ms;
   }
 
   /** 변성대왕 게임 화면이면 배경을 해골·뼈·불씨로 */
@@ -438,6 +448,15 @@ export class Fx {
       this.bgCam.position.x += (this.mouse.x * 1.2 - this.bgCam.position.x) * 0.03;
       this.bgCam.position.y += (-this.mouse.y * 0.8 - this.bgCam.position.y) * 0.03;
       this.bgCam.lookAt(0, 0, -8);
+      const laughing = now < this.cackleUntil;
+      this.jaws.forEach((j, k) => {
+        const open = laughing ? Math.abs(Math.sin(t * 16 + k * 1.7)) * 0.32 : 0;
+        j.position.y = -0.55 - open * 0.5;
+        j.rotation.x = open;
+        const g = j.parent!;
+        g.userData.rz ??= g.rotation.z;
+        g.rotation.z = g.userData.rz + (laughing ? Math.sin(t * 10 + k) * 0.12 : 0);
+      });
     }
     this.bgR.render(this.bgScene, this.bgCam);
 

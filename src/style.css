@@ -793,6 +793,20 @@ input:focus {
   border-radius: 4px;
   font-weight: 800;
 }
+.countdown.king {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #ff3b3b;
+  background: rgba(14, 2, 4, 0.72);
+}
+.countdown .cd-face {
+  width: min(45%, 210px);
+  aspect-ratio: 1;
+  filter: drop-shadow(0 0 22px rgba(229, 48, 63, 0.8));
+}
 .countdown b {
   display: inline-block;
   animation: pop 0.5s cubic-bezier(0.3, 1.8, 0.5, 1);
