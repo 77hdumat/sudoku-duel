@@ -73,7 +73,7 @@ function noise(at: number, dur: number, freq: number, q: number, vol: number): v
 const st = (base: number, n: number) => base * 2 ** (n / 12);
 const C5 = 523.25;
 
-export const sfx = {
+const calm = {
   /** 첫 클릭 때 오디오를 깨워 둔다 */
   unlock(): void {
     ac();
@@ -144,4 +144,66 @@ export const sfx = {
   lose(): void {
     [7, 4, 0, -5].forEach((n, i) => tone(st(C5, n), i * 0.16, i === 3 ? 0.5 : 0.18, 'triangle', 0.28));
   },
+};
+
+/** 종소리: 사인 + 비정수배 배음 — 장례식 종처럼 길게 울린다 */
+function bell(freq: number, at: number, dur: number, vol: number): void {
+  tone(freq, at, dur, 'sine', vol);
+  tone(freq * 2.76, at, dur * 0.6, 'sine', vol * 0.35);
+  tone(freq * 5.4, at, dur * 0.3, 'sine', vol * 0.12);
+}
+
+/** 변성대왕 화면: 같은 자리에서 나는 소리를 낮고 불길하게 (단조·감화음·종·으르렁) */
+const dreadful: Partial<typeof calm> = {
+  click(): void {
+    tone(120, 0, 0.09, 'sine', 0.3, 70);
+    noise(0, 0.06, 400, 1, 0.25);
+  },
+  select(): void {
+    tone(st(C5, -24), 0, 0.06, 'sine', 0.1);
+  },
+  note(): void {
+    noise(0, 0.07, 3200, 5, 0.14);
+  },
+  correct(combo = 0): void {
+    const b = st(C5, -19 + Math.min(combo, 12));
+    bell(b, 0, 0.9, 0.32);
+    tone(st(b, 6), 0.05, 0.5, 'triangle', 0.12);
+  },
+  wrong(): void {
+    tone(95, 0, 0.6, 'sawtooth', 0.22, 42);
+    tone(101, 0, 0.6, 'sawtooth', 0.16, 45);
+    noise(0, 0.5, 180, 0.8, 0.5);
+  },
+  line(): void {
+    [12, 9, 6, 3, 0].forEach((n, i) => tone(st(C5, n - 12), i * 0.09, 0.45, 'triangle', 0.26));
+    bell(st(C5, -24), 0.45, 1.4, 0.3);
+  },
+  hint(): void {
+    noise(0, 0.9, 1400, 0.7, 0.18);
+    tone(st(C5, -12), 0, 0.9, 'sine', 0.16, st(C5, -6));
+  },
+  countdown(last = false): void {
+    bell(last ? 98 : 73.4, 0, last ? 2 : 0.9, 0.42);
+  },
+  win(): void {
+    // 단조 오르간 — 이겼어도 축하보다 '살아남았다'
+    [0, 3, 7, 12, 15, 19].forEach((n, i) => tone(st(C5, n - 24), i * 0.18, i === 5 ? 1.6 : 0.5, 'sawtooth', 0.12));
+    bell(st(C5, -24), 1.0, 2.2, 0.35);
+  },
+  lose(): void {
+    // 낮게 끌리는 크크크
+    for (let i = 0; i < 5; i++) tone(st(C5, -14 - i * 2), i * 0.17, 0.15, 'sawtooth', 0.2, st(C5, -18 - i * 2));
+    noise(0, 1.2, 140, 0.7, 0.45);
+  },
+};
+
+let dread = false;
+
+export const sfx = Object.fromEntries(
+  Object.entries(calm).map(([k, f]) => [k, (...args: never[]) => ((dread && dreadful[k as keyof typeof calm]) || f)(...(args as [never]))]),
+) as typeof calm & { setDread(on: boolean): void };
+/** 변성대왕 게임 화면이면 무서운 소리로 */
+sfx.setDread = (on: boolean) => {
+  dread = on;
 };

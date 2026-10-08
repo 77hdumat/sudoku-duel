@@ -83,7 +83,9 @@ function show(html: string): void {
   cleanup?.();
   cleanup = null;
   app.innerHTML = html;
-  fx.setHell(!!app.querySelector('.play.king'));
+  const hell = !!app.querySelector('.play.king');
+  fx.setHell(hell);
+  sfx.setDread(hell);
 }
 
 // ───────────────────────── 메뉴 ─────────────────────────
