@@ -44,7 +44,8 @@ export type Msg =
   /** 플레이어 → 방장 → 관전자·끝낸 플레이어: 판 상태 (Board.snapshot, sel = 고른 칸, 없으면 -1) */
   | { t: 'view'; id: number; grid: string; notes: string; sel?: number }
   /** cells: 미리보기용 칸 수만큼 글자 (g 주어진 칸, 1 맞게 채운 칸, 0 빈칸) */
-  | { t: 'progress'; id: number; filled: number; mistakes: number; cells?: string }
+  /** auto = 자동 메모 벌점 합(ms) */
+  | { t: 'progress'; id: number; filled: number; mistakes: number; auto?: number; cells?: string }
   /** 레이스형: 게스트 → 방장 완주 보고 / 포기 */
   | { t: 'finish'; id: number; ms: number }
   | { t: 'giveup' }
@@ -70,6 +71,7 @@ export interface ResultRow {
   score?: number;
   gaveUp?: boolean;
   mistakes?: number;
+  autoMs?: number;
 }
 
 export const NAME_MAX = 12;

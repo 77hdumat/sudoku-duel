@@ -1,3 +1,5 @@
+import { bitCount } from './Sudoku';
+
 /** 한 사람의 기록. ms = 완주 시간(못 끝냈으면 null), score = 점령형 점수 */
 export interface Entry {
   id: number;
@@ -9,6 +11,8 @@ export interface Entry {
   mistakes?: number;
   /** 실수 하나에 더해지는 시간 (난이도마다 다르다, 없으면 MISTAKE_PENALTY_MS) */
   penaltyMs?: number;
+  /** 자동 메모로 아낀 시간만큼 더해지는 벌점(ms) 합 */
+  autoMs?: number;
 }
 
 const fewer = (a: Entry, b: Entry) => (a.mistakes ?? 0) - (b.mistakes ?? 0);
@@ -22,8 +26,26 @@ export const penaltyFor = (level: string): number => (level === 'king' ? KING_PE
 /** '30초' · '7분' */
 export const penaltyText = (ms: number): string => (ms >= 60_000 && ms % 60_000 === 0 ? `${ms / 60_000}분` : `${Math.round(ms / 1000)}초`);
 
-/** 최종 기록 = 완주 시간 + 실수 벌점 (못 끝냈으면 null) */
-export const finalMs = (e: Entry): number | null => (e.ms == null ? null : e.ms + (e.mistakes ?? 0) * (e.penaltyMs ?? MISTAKE_PENALTY_MS));
+/** 최종 기록 = 완주 시간 + 실수 벌점 + 자동 메모 벌점 (못 끝냈으면 null) */
+export const finalMs = (e: Entry): number | null => (e.ms == null ? null : e.ms + (e.mistakes ?? 0) * (e.penaltyMs ?? MISTAKE_PENALTY_MS) + (e.autoMs ?? 0));
+
+/** 자동 메모 벌점: 사람이 손으로 채웠다면 걸렸을 시간 — 빈칸 하나 훑기 + 후보 하나 적기, 여기에 검증 시간 */
+export const AUTO_SCAN_MS = 3000;
+export const AUTO_MARK_MS = 800;
+export const AUTO_VERIFY = 1.2;
+
+/**
+ * 자동 메모 전후 메모(칸마다 후보 비트)를 견줘 벌점을 매긴다. 메모가 달라진 칸만 센다 —
+ * 연달아 눌러도 두 번 물지 않고, 손으로 이미 적어 둔 후보는 빼 준다. 초 단위로 반올림.
+ */
+export function autoNotePenaltyMs(before: number[], after: number[]): number {
+  let ms = 0;
+  for (let i = 0; i < after.length; i++) {
+    if (before[i] === after[i]) continue;
+    ms += AUTO_SCAN_MS + bitCount(after[i] & ~before[i]) * AUTO_MARK_MS;
+  }
+  return Math.round((ms * AUTO_VERIFY) / 1000) * 1000;
+}
 
 /** 레이스: 완주한 사람은 최종 기록(시간 + 실수 벌점)순, 못 끝낸 사람은 그 뒤에 채운 칸 많은 순. 같으면 실수 적은 순 */
 export function rankRace<T extends Entry>(es: T[]): T[] {

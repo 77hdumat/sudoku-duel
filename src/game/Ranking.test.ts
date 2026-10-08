@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './Ranking';
+import { AUTO_MARK_MS, AUTO_SCAN_MS, AUTO_VERIFY, autoNotePenaltyMs, finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './Ranking';
 
 describe('Ranking', () => {
   it('레이스: 완주자는 시간순, 미완주는 뒤에서 진행 많은 순', () => {
@@ -67,5 +67,23 @@ describe('Ranking', () => {
       { id: 2, filled: 41, ms: null },
     ]);
     expect(places(race, false)).toEqual([1, 2]);
+  });
+
+  it('자동 메모 벌점: 달라진 칸만, 칸 훑기 + 새로 적은 후보마다, 검증 시간 더해 초 단위', () => {
+    // 칸0: 빈 메모 → 후보 3개, 칸1: 이미 {1,2} → {1,2,3} 로 하나 추가, 칸2: 그대로
+    const before = [0, 0b011, 0b101];
+    const after = [0b111, 0b111, 0b101];
+    const raw = 2 * AUTO_SCAN_MS + 4 * AUTO_MARK_MS;
+    expect(autoNotePenaltyMs(before, after)).toBe(Math.round((raw * AUTO_VERIFY) / 1000) * 1000);
+    expect(autoNotePenaltyMs(after, after)).toBe(0);
+  });
+
+  it('자동 메모 벌점은 최종 기록에 더해진다', () => {
+    expect(finalMs({ id: 1, filled: 0, ms: 100_000, mistakes: 1, autoMs: 60_000 })).toBe(100_000 + MISTAKE_PENALTY_MS + 60_000);
+    const es: Entry[] = [
+      { id: 1, filled: 0, ms: 100_000, autoMs: 30_000 },
+      { id: 2, filled: 0, ms: 120_000 },
+    ];
+    expect(rankRace(es).map((e) => e.id)).toEqual([2, 1]);
   });
 });
