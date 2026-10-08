@@ -4,7 +4,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 /**
  * AI 봇 3D 얼굴 (외부 모델 없이 three.js 기본 도형으로): 머리·눈·눈썹·입·소품을 따로 만들어
  * three.js 'morph targets - face' 예제처럼 표정을 움직인다 — 깜빡임, 봇마다 다른 시선, 마우스를 올리면
- * 꼬마봇은 부끄러워하고 스도봇은 당황하고 마스터봇은 씩 웃고 지옥봇은 불을 뿜고 변성대왕은 눈이 시뻘게져 노려본다.
+ * 꼬마봇은 부끄러워하고 스도봇은 당황하고 마스터봇은 씩 웃고 지옥봇은 불을 뿜고 변성대왕은 눈이 시뻘게져 피눈물을 흘리며 등 뒤로 불길이 솟는다.
  * 비웃을 때(변성대왕 도발)는 눈썹이 내려오고 눈을 가늘게 뜨며 입을 벌리고 크크크 들썩인다.
  *
  * 쓰는 곳 두 군데:
@@ -111,19 +111,29 @@ const LOOKS: Record<string, Look> = {
     extra(g) {
       const horn = mat(0xf1e4c4, { rough: 0.4 });
       for (const s of [-1, 1]) {
-        // 굽은 뿔: 원뿔 세 마디를 바깥으로 휘게
-        let x = s * 0.5;
-        let y = 0.82;
-        let r = 0.21;
-        for (let k = 0; k < 3; k++) {
-          const seg = new THREE.Mesh(new THREE.ConeGeometry(r, 0.34, 14, 1, k < 2), horn);
-          seg.position.set(x, y, 0);
-          seg.rotation.z = -s * (0.35 + k * 0.3);
+        // 굽은 뿔: 이마 위에서 바깥으로 뻗다가 끝이 위·안쪽으로 휜다. 마디는 앞 마디 끝에 이어 붙인다
+        let x = s * 0.42;
+        let y = 0.78;
+        let r = 0.2;
+        for (const [a, len] of [
+          [0.75, 0.3],
+          [0.3, 0.3],
+          [-0.2, 0.28],
+        ]) {
+          const dx = s * Math.sin(a);
+          const dy = Math.cos(a);
+          const seg = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r, len, 14, 1, true), horn);
+          seg.position.set(x + (dx * len) / 2, y + (dy * len) / 2, 0.2);
+          seg.rotation.z = -s * a;
           g.add(seg);
-          x += s * 0.1;
-          y += 0.26;
-          r *= 0.68;
+          x += dx * len * 0.92;
+          y += dy * len * 0.92;
+          r *= 0.7;
         }
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(r, 0.2, 14), horn);
+        tip.position.set(x + s * Math.sin(-0.35) * 0.1, y + Math.cos(-0.35) * 0.1, 0.2);
+        tip.rotation.z = s * 0.35;
+        g.add(tip);
         const ear = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.45, 10), mat(0xb3202a));
         ear.position.set(s * 1.0, 0.15, -0.05);
         ear.rotation.z = -s * 1.25;
@@ -145,27 +155,27 @@ const LOOKS: Record<string, Look> = {
       // 변성대왕: 검은 갓(넓은 챙 + 높은 대우) + 금빛 띠 + 王 패, 길게 늘어진 검은 수염과 팔자 콧수염
       // 갓은 말총으로 엮어 비쳐 보인다 — 반투명 검정
       const black = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3, metalness: 0.2, transparent: true, opacity: 0.88 });
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.03, 48), black);
-      brim.position.y = 0.92;
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 0.04, 48), black);
+      brim.position.y = 0.64;
       brim.rotation.x = 0.1;
-      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.72, 32), black);
-      crown.position.y = 1.3;
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), black);
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.74, 0.9, 32), black);
+      crown.position.y = 1.11;
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.62, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), black);
       cap.scale.y = 0.3;
-      cap.position.y = 1.66;
+      cap.position.y = 1.56;
       g.add(cap);
       // 갓끈: 턱 아래로 늘어진 구슬 줄
       for (const s of [-1, 1])
         for (let k = 0; k < 6; k++) {
           const bead = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), mat(0x8a1c1c, { rough: 0.3 }));
-          bead.position.set(s * (0.9 - k * 0.06), 0.75 - k * 0.3, 0.25 + k * 0.05);
+          bead.position.set(s * (0.95 - k * 0.06), 0.5 - k * 0.27, 0.25 + k * 0.05);
           g.add(bead);
         }
       const gold = mat(0xd4a017, { metal: 0.85, rough: 0.25, emissive: 0x3a2800 });
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.665, 0.665, 0.12, 32), gold);
-      band.position.y = 1.0;
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.04), gold);
-      plate.position.set(0, 1.38, 0.62);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.745, 0.75, 0.14, 32), gold);
+      band.position.y = 0.72;
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.04), gold);
+      plate.position.set(0, 1.14, 0.69);
       plate.rotation.x = -0.05;
       const glyph = new THREE.Group();
       const ink = mat(0x5a0000, { emissive: 0x500000 });
@@ -176,7 +186,8 @@ const LOOKS: Record<string, Look> = {
       }
       const stem = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.22, 0.02), ink);
       glyph.add(stem);
-      glyph.position.set(0, 1.38, 0.645);
+      glyph.scale.setScalar(1.15);
+      glyph.position.set(0, 1.14, 0.715);
       g.add(brim, crown, band, plate, glyph);
 
       const hair = mat(0x101010, { rough: 0.9 });
@@ -228,6 +239,9 @@ export class Face {
   private blush: THREE.Object3D[] = [];
   private sweat?: THREE.Group;
   private fire: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>[] = [];
+  /** 변성대왕이 노려보면 눈에서 흐르는 피눈물: 볼을 따라 길어지는 줄기 + 떨어지는 방울 */
+  private tears: THREE.Mesh[] = [];
+  private drops: THREE.Mesh[] = [];
   private mood = 0;
   private hov = 0;
   private blinkAt = 1 + Math.random() * 3;
@@ -312,6 +326,33 @@ export class Face {
         p.visible = false;
         this.mouth.add(p);
         this.fire.push(p);
+      }
+    }
+    // 변성대왕: 머리 뒤로 솟는 검붉은 불길 + 피눈물
+    if (kind === 'king') {
+      const ball = new THREE.SphereGeometry(1, 10, 8);
+      for (let k = 0; k < 70; k++) {
+        const p = new THREE.Mesh(ball, new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        p.userData = { x: (Math.random() - 0.5) * 3.4, z: -0.1 - Math.random() * 0.5, k: Math.random() };
+        p.visible = false;
+        this.head.add(p);
+        this.fire.push(p);
+      }
+      const blood = mat(0xb0000c, { emissive: 0x500000, rough: 0.15 });
+      for (const s of [-1, 1]) {
+        const tear = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 1, 4, 8), blood);
+        tear.position.set(s * 0.38, 0, 0.86);
+        tear.visible = false;
+        this.head.add(tear);
+        this.tears.push(tear);
+        for (let k = 0; k < 4; k++) {
+          const d = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 8), blood);
+          d.scale.y = 1.6;
+          d.userData = { s, k: k / 4 };
+          d.visible = false;
+          this.head.add(d);
+          this.drops.push(d);
+        }
       }
     }
   }
@@ -427,6 +468,31 @@ export class Face {
           sm.emissiveIntensity = 1.2 + h * 2.5;
         }
         for (const iris of this.irises) iris.scale.setScalar(1 - h * 0.35);
+        // 뒤에서 불길이 치솟는다: 아래에서 위로 오르며 주황 → 검붉게 식고 가늘어진다
+        for (const p of this.fire) {
+          const { x, z, k } = p.userData as { x: number; z: number; k: number };
+          const life = (t * 0.9 + k) % 1;
+          p.visible = h > 0.03;
+          p.position.set(x * (1 - life * 0.5) + Math.sin(t * 6 + k * 20) * 0.1, -1.2 + life * 3.6, z);
+          p.scale.set((0.5 - life * 0.35) * h, (0.7 - life * 0.4) * h, 0.4 * h);
+          p.material.color.setHSL(0.05 - life * 0.05, 1, 0.42 - life * 0.25);
+          p.material.opacity = Math.sin(life * Math.PI) * h * 0.5;
+        }
+        // 피눈물: 눈 밑에서 줄기가 볼을 타고 내려가고, 끝에서 방울이 떨어진다
+        const len = h * 0.75;
+        for (const tear of this.tears) {
+          tear.visible = h > 0.03;
+          tear.scale.y = Math.max(0.01, len);
+          tear.position.y = 0.0 - (len * 1.07) / 2;
+          tear.position.z = 0.86 - len * 0.18;
+        }
+        for (const d of this.drops) {
+          const { s, k } = d.userData as { s: number; k: number };
+          const life = (t * 0.8 + k) % 1;
+          d.visible = h > 0.5;
+          d.position.set(s * 0.38, -len * 1.07 - life * 1.1, 0.86 - len * 0.36 - life * 0.1);
+          d.scale.set(h, 1.6 * h, h);
+        }
         break;
       }
     }
