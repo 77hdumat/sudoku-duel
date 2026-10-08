@@ -41,8 +41,8 @@ export type Msg =
   | { t: 'start'; puzzle: string; level: Level; rule: Rule; hints: number }
   /** 게임 중에 들어온 관전자에게: 지금 판과 기록 (ms = 시작 후 지난 시간) */
   | { t: 'watch'; puzzle: string; level: Level; rule: Rule; hints: number; ms: number; rows: ResultRow[] }
-  /** 플레이어 → 방장 → 관전자: 판 상태 (Board.snapshot) */
-  | { t: 'view'; id: number; grid: string; notes: string }
+  /** 플레이어 → 방장 → 관전자·끝낸 플레이어: 판 상태 (Board.snapshot, sel = 고른 칸, 없으면 -1) */
+  | { t: 'view'; id: number; grid: string; notes: string; sel?: number }
   /** cells: 미리보기용 칸 수만큼 글자 (g 주어진 칸, 1 맞게 채운 칸, 0 빈칸) */
   | { t: 'progress'; id: number; filled: number; mistakes: number; cells?: string }
   /** 레이스형: 게스트 → 방장 완주 보고 / 포기 */

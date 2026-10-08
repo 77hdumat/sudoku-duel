@@ -4,7 +4,7 @@ import { ClaimJudge, type ClaimEvent } from './game/Claim';
 import { ATTACK_COMBO, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUntil } from './game/Combo';
 import { finalMs, MISTAKE_PENALTY_MS, penaltyFor, penaltyText, places, rankRace, rankScore, type Entry } from './game/Ranking';
 import { explainNext } from './game/Grade';
-import { autoNotesFor, candidates, fromStr, generate, HINTS, LEVELS, levelsFor, SIZES, solve, toStr, type Grid, type Level, type Size } from './game/Sudoku';
+import { autoNotesFor, candidates, fromStr, generate, geo, HINTS, LEVELS, levelsFor, SIZES, solve, toStr, type Grid, type Level, type Size } from './game/Sudoku';
 import { Fx } from './fx/Fx';
 import { goo, type Goo } from './fx/Goo';
 import { sfx } from './fx/Sfx';
@@ -806,6 +806,8 @@ function startSingle(level: Level, items: boolean, size: Size): void {
 
 // ───────────────────────── 멀티 ─────────────────────────
 
+type View = { grid: string; notes: string; sel?: number };
+
 interface Room {
   host: boolean;
   myId: number;
@@ -821,8 +823,8 @@ interface Room {
   hints: number;
   /** 지금 판 (게임 중에 들어온 관전자에게 보낼 용도) */
   puzzle: string;
-  /** 플레이어별 최신 판 상태 — 방장(중계·스냅샷용)과 관전자만 쓴다 */
-  views: Map<number, { grid: string; notes: string }>;
+  /** 플레이어별 최신 판 상태 — 방장(중계·스냅샷용)·관전자·끝낸 플레이어가 쓴다 */
+  views: Map<number, View>;
   phase: 'lobby' | 'play';
   total: number;
   /** 레이스형 진행률·완주 시간·포기 */
@@ -998,7 +1000,7 @@ function createRoom(): void {
       case 'view': {
         if (r.phase !== 'play' || !r.players.some((x) => x.id === from)) return;
         if (!viewOk(m)) return;
-        return relayView({ t: 'view', id: from, grid: m.grid, notes: m.notes });
+        return relayView({ t: 'view', id: from, grid: m.grid, notes: m.notes, sel: selOf(m.sel) });
       }
       case 'chat': {
         const p = r.players.find((x) => x.id === from) ?? r.watchers.find((x) => x.id === from);
@@ -1046,18 +1048,27 @@ function hostStart(): void {
   room.judge = room.rule === 'claim' ? new ClaimJudge(puzzle, solution, FREEZE_MS, room.hints) : null;
 }
 
-/** 판 상태를 기억해 두고 관전자에게만 보낸다 (플레이어끼리는 서로의 메모를 못 본다) */
-function relayView(m: { t: 'view'; id: number; grid: string; notes: string }): void {
-  if (!room) return;
-  room.views.set(m.id, { grid: m.grid, notes: m.notes });
-  for (const w of room.watchers) net?.sendTo(w.id, m);
+/** 판 상태를 기억해 두고 관전자·끝낸 플레이어에게만 보낸다 (아직 푸는 사람끼리는 서로의 메모를 못 본다) */
+function relayView(m: { t: 'view'; id: number } & View): void {
+  const r = room;
+  if (!r) return;
+  r.views.set(m.id, { grid: m.grid, notes: m.notes, sel: m.sel });
+  r.watch?.paint(m.id);
+  for (const w of r.watchers) net?.sendTo(w.id, m);
+  if (isRace(r.rule)) for (const p of r.players) if (p.id !== 0 && p.id !== m.id && !racing(p.id)) net?.sendTo(p.id, m);
+}
+
+/** 끝낸 플레이어에게 지금까지의 판 상태를 한 번에 (이후는 relayView 가 보낸다) */
+function sendViews(id: number): void {
+  if (!room || id === 0) return;
+  for (const [pid, v] of room.views) if (pid !== id) net?.sendTo(id, { t: 'view', id: pid, ...v });
 }
 
 /** 게임 중에 들어온 관전자에게 지금 판·기록·각자의 판 상태를 */
 function sendWatch(id: number): void {
   const r = room;
   if (!r || !net) return;
-  net.sendTo(id, { t: 'watch', puzzle: r.puzzle, level: r.level, rule: r.rule, hints: r.hints, ms: r.play?.elapsed() ?? 0, rows: currentRows() });
+  net.sendTo(id, { t: 'watch', puzzle: r.puzzle, level: r.level, rule: r.rule, hints: r.hints, ms: (r.play ?? r.watch)?.elapsed() ?? 0, rows: currentRows() });
   for (const [pid, v] of r.views) net.sendTo(id, { t: 'view', id: pid, ...v });
   if (r.result) net.sendTo(id, { t: 'result', rows: r.result });
 }
@@ -1080,6 +1091,7 @@ function hostFinish(id: number, ms: number): void {
   const m: Msg = { t: 'finished', id, ms };
   net?.broadcast(m);
   applyFinished(m);
+  sendViews(id);
   checkRaceEnd();
 }
 
@@ -1088,6 +1100,7 @@ function hostGiveUp(id: number): void {
   const m: Msg = { t: 'gaveup', id };
   net?.broadcast(m);
   applyGaveUp(m);
+  sendViews(id);
   checkRaceEnd();
 }
 
@@ -1387,7 +1400,8 @@ function applyFinished(m: { id: number; ms: number }): void {
   if (m.id === r.myId) {
     if (r.finishes.size === 1) fx.confetti(70);
     sfx.line();
-    r.play?.banner(`🏁 완주! 기록 ${rec} — 다른 사람을 기다리는 중…`);
+    r.play?.banner(`🏁 완주! 기록 ${rec} — 곧 다른 사람 판을 관전해요`);
+    watchSoon('🏁 완주');
   } else sfx.claimOther();
   refreshPlayers();
 }
@@ -1399,7 +1413,8 @@ function applyGaveUp(m: { id: number }): void {
   addChat(`🏳️ ${nameOf(m.id)} 님이 포기했어요.`);
   if (m.id === r.myId) {
     r.play?.end();
-    r.play?.banner('포기했어요. 다른 사람을 기다리는 중…');
+    r.play?.banner('포기했어요. 곧 다른 사람 판을 관전해요');
+    watchSoon('🏳️ 포기');
   }
   refreshPlayers();
 }
@@ -1517,12 +1532,12 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number):
       if (r.host) hostAttack(0);
       else net?.send({ t: 'attack' });
     });
-  // 판·메모가 바뀔 때마다 관전자에게 (방장이 중계)
+  // 판·메모·고른 칸이 바뀔 때마다 관전자에게 (방장이 중계)
   let sent = '';
   board.onRender = () => {
     const v = board.snapshot();
-    if (v.grid + v.notes === sent) return;
-    sent = v.grid + v.notes;
+    if (v.grid + v.notes + v.sel === sent) return;
+    sent = v.grid + v.notes + v.sel;
     const m: Msg = { t: 'view', id: r.myId, ...v };
     if (r.host) relayView(m);
     else net?.send(m);
@@ -1539,40 +1554,75 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number):
 
 interface Watch {
   end(): void;
+  /** 시작 후 지난 시간 (늦게 들어온 관전자에게 보낼 용도) */
+  elapsed(): number;
   overlay(html: string): HTMLElement;
   banner(html: string): void;
   /** 플레이어 한 명의 판을 다시 그린다 */
   paint(id: number): void;
 }
 
-/** 관전 화면: 플레이어마다 판과 메모를 그대로 (ms = 시작 후 지난 시간, 카운트다운 중이면 음수) */
+/** 관전자로 들어왔을 때: 새 판 상태를 맞추고 관전 화면으로 (ms = 시작 후 지난 시간, 카운트다운 중이면 음수) */
 function startWatch(puzzleStr: string, level: Level, rule: Rule, hints: number, ms: number, rows?: ResultRow[]): void {
   if (!room || !net) return;
-  const r = room;
   const round = beginRound(puzzleStr, level, rule, hints);
   if (!round) return;
-  const { puzzle, solution } = round;
   if (rows) applyRows(rows);
+  watchScreen(round.puzzle, round.solution, ms);
+  addChat(`👀 ${LEVELS[level].label} · ${RULES[rule].label} 관전 중`);
+}
+
+/** 레이스형: 내가 완주·포기하면 축하 배너를 잠깐 보여 준 뒤 남은 사람들의 판을 관전한다 */
+function watchSoon(tag: string): void {
+  const r = room;
+  setTimeout(() => {
+    const pl = r?.play;
+    if (!pl || room !== r || r.phase !== 'play' || r.result) return;
+    pl.end();
+    r.play = null;
+    const puzzle = fromStr(r.puzzle);
+    watchScreen(puzzle, solve(puzzle)!, pl.elapsed(), tag);
+  }, 1800);
+}
+
+/** 고른 칸 번호 검사 (없거나 이상하면 -1) */
+function selOf(v: unknown): number {
+  const i = Number(v);
+  return Number.isInteger(i) && i >= 0 && i < (room?.puzzle.length ?? 0) ? i : -1;
+}
+
+/**
+ * 관전 화면: 플레이어마다 판·메모·고른 칸을 그대로.
+ * done = 끝낸 플레이어가 보는 중이면 그 표시(🏁 완주 등) — 내 판은 빼고 남의 판만 보여 준다.
+ */
+function watchScreen(puzzle: Grid, solution: Grid, ms: number, done?: string): void {
+  if (!room || !net) return;
+  const r = room;
+  const { level, rule } = r;
   const claim = rule === 'claim';
   const n = Math.sqrt(puzzle.length);
+  const G = geo(puzzle.length);
+  const shown = done ? r.players.filter((p) => p.id !== r.myId) : r.players;
   const cells = Array.from({ length: puzzle.length }, (_, i) => `<div class="cell" data-r="${Math.floor(i / n)}" data-c="${i % n}"></div>`).join('');
   show(`
   <div class="screen play watching">
-    <aside class="side"><h3>${claim ? '실시간 점수' : '실시간 순위'}</h3><div class="standings" id="stand"></div>${claim ? '<p class="hint"><span id="left"></span></p>' : ''}</aside>
+    <aside class="side"><h3>${claim ? '실시간 점수' : '실시간 순위'}</h3><div class="standings" id="stand"></div>${claim ? '<p class="hint"><span id="left"></span></p>' : ''}${r.host && !claim ? '<button class="ghost hidden" id="end-now">지금 종료하고 순위 발표</button>' : ''}</aside>
     <main class="center">
       <div class="hud">
         <span class="chip">${n === 6 ? '6×6 · ' : ''}${LEVELS[level].label}</span><span class="chip accent">${RULES[rule].label}</span>
         <span class="timer" id="timer">0:00</span>
-        <span class="chip">👀 관전</span>
+        <span class="chip">${done ? `${done} · ` : ''}👀 관전</span>
         <button class="ghost" id="quit">나가기</button>
       </div>
-      <div class="watch-grid">${r.players
+      <div class="watch-grid">${shown
         .map((p) => `<div class="watch-card" style="--own:${colorOf(p.id)}"><div class="watch-name">${avatar(p)}<b>${esc(p.name)}</b></div><div class="board${n === 6 ? ' six' : ''}" data-w="${p.id}">${cells}</div></div>`)
         .join('')}</div>
     </main>
     <aside class="chat-slot" id="chat-slot"></aside>
   </div>`);
   $('#quit')!.onclick = () => menu();
+  const endNow = $('#end-now');
+  if (endNow) endNow.onclick = () => endGame();
   $('#chat-slot')!.appendChild(r.chat);
 
   const t0 = performance.now() - ms;
@@ -1583,6 +1633,7 @@ function startWatch(puzzleStr: string, level: Level, rule: Rule, hints: number, 
 
   const w: Watch = {
     end: () => (ended = true),
+    elapsed: () => performance.now() - t0,
     overlay,
     banner: () => {},
     paint(id) {
@@ -1590,10 +1641,17 @@ function startWatch(puzzleStr: string, level: Level, rule: Rule, hints: number, 
       if (!el) return;
       const v = r.views.get(id);
       const grid = v ? fromStr(v.grid) : puzzle;
+      // 그 사람이 고른 칸과 같은 줄·박스를 실제 판처럼 강조
+      const s = v?.sel ?? -1;
+      const peers = s >= 0 ? new Set(G.peers[s]) : null;
       [...el.children].forEach((c, i) => {
         const notes = v ? parseInt(v.notes.slice(i * 2, i * 2 + 2), 36) : 0;
         const val = grid[i];
-        c.className = 'cell' + (puzzle[i] ? ' given' : val ? ' user' : '') + (val && val !== solution[i] ? ' wrong' : '');
+        c.className =
+          'cell' +
+          (puzzle[i] ? ' given' : val ? ' user' : '') +
+          (val && val !== solution[i] ? ' wrong' : '') +
+          (i === s ? ' sel' : peers?.has(i) ? ' peer' : '');
         if (val) c.innerHTML = `<span class="v">${val}</span>`;
         else if (notes) {
           let h = '<div class="notes">';
@@ -1604,8 +1662,7 @@ function startWatch(puzzleStr: string, level: Level, rule: Rule, hints: number, 
     },
   };
   r.watch = w;
-  for (const p of r.players) w.paint(p.id);
-  addChat(`👀 ${LEVELS[level].label} · ${RULES[rule].label} 관전 중`);
+  for (const p of shown) w.paint(p.id);
   refreshPlayers();
 }
 
@@ -1617,11 +1674,12 @@ function viewOk(m: { grid: unknown; notes: unknown }): boolean {
   return grid.length === n && notes.length === n * 2 && /^[0-9]+$/.test(grid) && /^[0-9a-z]+$/.test(notes);
 }
 
-function applyView(m: { id: number; grid: string; notes: string }): void {
+/** 관전 화면이 아직 없어도(완주 직후 배너 중) 기억해 두었다가 화면을 열 때 그린다 */
+function applyView(m: { id: number; grid: string; notes: string; sel?: number }): void {
   const r = room;
-  if (!r?.watch || r.phase !== 'play' || !viewOk(m)) return;
-  r.views.set(m.id, { grid: m.grid, notes: m.notes });
-  r.watch.paint(m.id);
+  if (!r || r.phase !== 'play' || !viewOk(m)) return;
+  r.views.set(m.id, { grid: m.grid, notes: m.notes, sel: selOf(m.sel) });
+  r.watch?.paint(m.id);
 }
 
 /** 받은 기록으로 순위표를 맞춘다 */

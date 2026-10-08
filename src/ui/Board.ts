@@ -251,9 +251,9 @@ export class Board {
     this.onChange?.(this.filled, this.mistakes);
   }
 
-  /** 관전자용 판 상태: grid 칸 수만큼 글자(0 = 빈칸), notes 칸마다 36진수 2 글자 */
-  snapshot(): { grid: string; notes: string } {
-    return { grid: this.grid.join(''), notes: this.notes.map((n) => n.toString(36).padStart(2, '0')).join('') };
+  /** 관전자용 판 상태: grid 칸 수만큼 글자(0 = 빈칸), notes 칸마다 36진수 2 글자, sel 고른 칸 */
+  snapshot(): { grid: string; notes: string; sel: number } {
+    return { grid: this.grid.join(''), notes: this.notes.map((n) => n.toString(36).padStart(2, '0')).join(''), sel: this.sel };
   }
 
   /** 고른 칸(없거나 이미 맞은 칸이면 가장 쉬운 빈칸)의 정답을 연다 */
