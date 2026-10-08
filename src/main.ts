@@ -5,6 +5,7 @@ import { ATTACK_COMBO, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUnt
 import { finalMs, MISTAKE_PENALTY_MS, penaltyFor, penaltyText, places, rankRace, rankScore, type Entry } from './game/Ranking';
 import { explainNext } from './game/Grade';
 import { autoNotesFor, candidates, fromStr, generate, geo, HINTS, LEVELS, levelsFor, SIZES, solve, toStr, type Grid, type Level, type Size } from './game/Sudoku';
+import { faceHtml } from './fx/Faces';
 import { Fx } from './fx/Fx';
 import { goo, type Goo } from './fx/Goo';
 import { sfx } from './fx/Sfx';
@@ -175,7 +176,7 @@ function kingSays(wrong: number): void {
   wrap.querySelector('.king-says')?.remove();
   const el = document.createElement('div');
   el.className = 'king-says';
-  el.innerHTML = `<img src="assets/bot-king-laugh.svg" alt="변성대왕" /><p>${lines[Math.floor(Math.random() * lines.length)]}</p>`;
+  el.innerHTML = `${faceHtml('king', 'king-face', 'laugh')}<p>${lines[Math.floor(Math.random() * lines.length)]}</p>`;
   wrap.appendChild(el);
   setTimeout(() => el.remove(), 4200);
 }
@@ -708,7 +709,7 @@ function startSingle(level: Level, items: boolean, size: Size): void {
   const me: PlayerInfo = { id: 0, name: myName };
   const penaltyMs = penaltyFor(level);
   const meR: Racer = { id: 0, name: myName, color: colorOf(0), avatar: avatar(me), me: true, filled: 0, ms: null, mistakes: 0, penaltyMs };
-  const aiR: Racer = { id: 1, name: prof.name, color: '#8a93a6', avatar: `<img class="avatar pic" src="${prof.avatar}" alt="" />`, me: false, filled: 0, ms: null, mistakes: 0, penaltyMs };
+  const aiR: Racer = { id: 1, name: prof.name, color: '#8a93a6', avatar: faceHtml(level, 'avatar pic'), me: false, filled: 0, ms: null, mistakes: 0, penaltyMs };
   const meter = items ? new ComboMeter() : undefined;
   const aiMeter = new ComboMeter();
   let done = false;

@@ -2523,8 +2523,9 @@ textarea {
   pointer-events: none;
   animation: king-says 4.2s ease-in-out forwards;
 }
-.king-says img {
-  width: min(34%, 160px);
+.king-says .king-face {
+  width: min(42%, 200px);
+  aspect-ratio: 1;
   filter: drop-shadow(0 0 18px rgba(229, 48, 63, 0.85));
   animation: cackle 0.32s steps(1) infinite;
 }
@@ -2559,7 +2560,7 @@ textarea {
 }
 @media (prefers-reduced-motion: reduce) {
   .king-says,
-  .king-says img {
+  .king-says .king-face {
     animation: none;
   }
 }

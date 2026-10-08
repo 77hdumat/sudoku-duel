@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { makeBot, type Bot } from './Bots3d';
+import { makeFace, type Face } from './Faces';
 
 /**
  * 화면의 모든 버튼을 장난감 블록으로: DOM 버튼은 투명하게 남겨 클릭·키보드·포커스를 그대로 받고,
@@ -34,8 +34,8 @@ interface Blk {
   popV: number;
   over: boolean;
   down: boolean;
-  /** 버튼 속 <img data-bot> 자리에 서는 3D 봇 (불러오는 중엔 2D 그림 그대로) */
-  bot?: Bot | null;
+  /** 버튼 속 <img data-bot> 자리에 서는 3D 봇 얼굴 */
+  bot?: Face | null;
 }
 
 /** CSS 색 문자열(color-mix·color() 포함)을 캔버스로 한 번 칠해 실제 RGB 로 */
@@ -182,20 +182,17 @@ export class UiBlocks {
     const img = b.el.querySelector<HTMLImageElement>('img[data-bot]');
     if (!img) return;
     if (b.bot === undefined) {
-      b.bot = null;
-      void makeBot(img.dataset.bot!).then((bot) => {
-        if (!bot || !this.items.has(b.el)) return;
-        b.bot = bot;
-        b.group.add(bot.root);
-        b.key = ''; // 2D 얼굴을 지우고 다시 그린다
-      });
+      b.bot = makeFace(img.dataset.bot!);
+      if (b.bot) b.group.add(b.bot.root);
+      b.key = ''; // 2D 얼굴을 지우고 다시 그린다
     }
     if (!b.bot) return;
     const q = img.getBoundingClientRect();
     const k = q.height / b.bot.height;
     b.bot.root.position.set(q.left + q.width / 2 - (r.left + r.width / 2), -(q.top + q.height / 2 - (r.top + r.height / 2)), b.depth / 2 + 2 + b.bot.back * k);
     b.bot.root.scale.setScalar(k);
-    b.bot.update(dt, b.over);
+    const gaze = { x: clamp((this.mouse.x - (q.left + q.width / 2)) / 300, -1, 1), y: clamp(-(this.mouse.y - (q.top + q.height / 2)) / 300, -1, 1) };
+    b.bot.update(dt, b.over ? 1 : 0, gaze);
   }
 
   /** 버튼 속 이미지·배경 있는 요소·글자를 화면 배치 그대로 캔버스에 */

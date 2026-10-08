@@ -61,7 +61,7 @@ npm test           # 생성기·솔버·AI 테스트
 - 배경: three.js 로 떠다니는 숫자 블록·비눗방울·별·하트 100여 개 (테마별 색, 마우스 시차). 마우스가 스치면 그 근처 것만 톡 밀려났다가 스프링으로 돌아온다 (`Fx.ts` 의 `SPRING`·`DAMP`·`PUSH_RADIUS`)
 - 변성대왕: 검붉은 지옥 테마 판. 숫자를 넣을 때마다 그 칸에서 볼륨 불꽃이 솟고 불티가 날린다 (채점 숨김이라 맞든 틀리든), 다 풀면 판이 차례로 타오른다.
   불꽃은 [mattatz/THREE.Fire](https://github.com/mattatz/THREE.Fire) (MIT) 를 정사영 카메라용으로 옮긴 `src/fx/Fire.ts` + `public/assets/fire.png`
-- AI 고르기 화면의 봇 얼굴은 3D (`src/fx/Bots3d.ts`): [RobotExpressive](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive) (Tomás Laulhé, CC0 1.0) 의 머리에 난이도별 색과 소품(안테나·안경·왕관·뿔·갓)을 붙였다. 올리면 화난 얼굴로 킬킬 끄덕인다. WebGL 이 없으면 SVG 얼굴 그대로
+- 봇 얼굴은 3D (`src/fx/Faces.ts`, 외부 모델 없이 three.js 도형): 머리·눈·눈썹·입·소품(안테나·안경·왕관·뿔·갓과 수염)을 따로 만들어 깜빡이고, 눈동자가 마우스를 따라가고, 비웃을 때 눈썹이 내려오며 입을 벌리고 들썩인다. AI 고르기 버튼(블록 레이어), 게임 중 순위표 프로필, 변성대왕 채점 대사에 쓰고, WebGL 이 없으면 SVG 얼굴 그대로
 - 맞히면 3D 별·하트 파티클 + 고리 + "+1"/콤보, 행·열·박스 완성 시 무지개 물결, 승리 시 색종이
 - 선택 칸: 네 모서리 꺾쇠가 숨 쉬듯 움직이며 칸 사이를 미끄러진다 (메모 모드 ✎ 점선, 정지 중 ❄)
 - 효과음: Web Audio 합성 (파일 없음). 우상단 🔊 로 끄고 켠다
