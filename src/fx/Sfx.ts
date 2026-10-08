@@ -157,11 +157,11 @@ const calm = {
  * gong = Asian Gong (freesound_community, 102397) · heartbeat = Heartbeat Single (universfield, 383748)
  * bone = Bone Crack 1 (freesound_community, 84755) · growl = Monster Growl (dragon-studio, 376892)
  * bell = Single Church Bell 2 (universfield, 352062)
- * laugh = Evil Laugh (dragon-studio, 431480) · cackle = Evil Laugh (freesound_community, 89423)
+ * cackle = Evil Laugh (freesound_community, 89423)
  * choir = Dark Choir Singing (freesound_community, 16805)
  * fire = Fire Ignite Whoosh (biww, 561960) · inferno = Big Fire Blast Whoosh (biww, 561961)
  */
-const SAMPLES = ['gong', 'heartbeat', 'bone', 'growl', 'bell', 'laugh', 'cackle', 'choir', 'fire', 'inferno'];
+const SAMPLES = ['gong', 'heartbeat', 'bone', 'growl', 'bell', 'cackle', 'choir', 'fire', 'inferno'];
 const buffers = new Map<string, AudioBuffer | null>();
 
 function load(name: string): void {
@@ -251,7 +251,7 @@ const dreadful: Partial<typeof calm> = {
     if (!sample('inferno', 1)) noise(0, 1.5, 400, 0.5, 0.6);
   },
   lose(): void {
-    if (sample('laugh', 1)) return;
+    if (sample('cackle', 1)) return;
     // 낮게 끌리는 크크크
     for (let i = 0; i < 5; i++) tone(st(C5, -14 - i * 2), i * 0.17, 0.15, 'sawtooth', 0.2, st(C5, -18 - i * 2));
     noise(0, 1.2, 140, 0.7, 0.45);
