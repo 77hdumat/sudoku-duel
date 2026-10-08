@@ -651,7 +651,7 @@ function singleSetup(): void {
       ${LEVEL_KEYS.map((l) => {
         const p = AI_PROFILES[l];
         return `<button class="bot ${l}" data-level="${l}">
-          <img src="${p.avatar}" alt="" />
+          <img src="${p.avatar}" alt="" data-bot="${l}" />
           <span class="chip">${LEVELS[l].label}</span>
           <b>${p.name}</b><small>${p.blurb}</small>
         </button>`;
