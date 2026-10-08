@@ -141,8 +141,10 @@ const calm = {
     seq.forEach((n, i) => tone(st(C5, n), i * 0.1, i === seq.length - 1 ? 0.6 : 0.16, 'triangle', 0.35));
     seq.forEach((n, i) => tone(st(C5, n - 12), i * 0.1, 0.16, 'sine', 0.2));
   },
-  /** 변성대왕이 비웃을 때 (평소 화면엔 없음) */
+  /** 변성대왕이 비웃을 때 · 숫자 칸에서 불이 솟을 때 · 다 풀고 판이 타오를 때 (평소 화면엔 없음) */
   laugh(): void {},
+  fire(): void {},
+  inferno(): void {},
   lose(): void {
     [7, 4, 0, -5].forEach((n, i) => tone(st(C5, n), i * 0.16, i === 3 ? 0.5 : 0.18, 'triangle', 0.28));
   },
@@ -155,8 +157,9 @@ const calm = {
  * bell = Single Church Bell 2 (universfield, 352062) · whisper = Creepy Whisper (dragon-studio, 472369)
  * laugh = Evil Laugh (dragon-studio, 431480) · cackle = Evil Laugh (freesound_community, 89423)
  * choir = Dark Choir Singing (freesound_community, 16805)
+ * fire = Fire Ignite Whoosh (biww, 561960) · inferno = Big Fire Blast Whoosh (biww, 561961)
  */
-const SAMPLES = ['gong', 'heartbeat', 'bone', 'growl', 'bell', 'whisper', 'laugh', 'cackle', 'choir'];
+const SAMPLES = ['gong', 'heartbeat', 'bone', 'growl', 'bell', 'whisper', 'laugh', 'cackle', 'choir', 'fire', 'inferno'];
 const buffers = new Map<string, AudioBuffer | null>();
 
 function load(name: string): void {
@@ -241,6 +244,12 @@ const dreadful: Partial<typeof calm> = {
   },
   laugh(): void {
     sample('cackle', 1);
+  },
+  fire(): void {
+    if (!sample('fire', 0.7)) noise(0, 0.5, 600, 0.6, 0.35);
+  },
+  inferno(): void {
+    if (!sample('inferno', 1)) noise(0, 1.5, 400, 0.5, 0.6);
   },
   lose(): void {
     if (sample('laugh', 1)) return;

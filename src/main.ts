@@ -160,6 +160,7 @@ function hellFire(board: Board, i: number, big = false): void {
   const cell = $('#board .cell')?.getBoundingClientRect().width ?? 50;
   fx.fire(x, y + cell * 0.45, cell * (big ? 2 : 1.5), cell * (big ? 4.2 : 3.1), big ? 1.8 : 1.4);
   fx.embers(x, y, big ? 22 : 12);
+  if (!big) sfx.fire();
 }
 
 /** 변성대왕 완주: 판 전체가 아래 줄부터 차례로 타오른다 */
@@ -187,6 +188,7 @@ function kingSays(wrong: number): void {
 
 function inferno(board: Board): void {
   const n = Math.sqrt(board.grid.length);
+  sfx.inferno();
   for (let c = 0; c < n; c++)
     for (const r of [n - 1, Math.floor(n / 2)]) setTimeout(() => hellFire(board, r * n + c, true), c * 90 + (r === n - 1 ? 0 : 450));
 }
