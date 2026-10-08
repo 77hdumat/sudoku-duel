@@ -149,7 +149,10 @@ const SPRING = 7;
 const DAMP = 3.2;
 /** 마우스가 이 픽셀 반경 안을 지나가면 밀어낸다 */
 const PUSH_RADIUS = 110;
+/** 변성대왕에게 마우스를 올리면 배경 블록이 변성대왕에게서 이만큼(깊이 비례) 달아난다 — 화면 밖까지 */
+const FLEE = 0.75;
 const _sp = new THREE.Vector3();
+const _aim = new THREE.Vector3();
 
 interface Tween {
   t: number;
@@ -437,7 +440,20 @@ export class Fx {
             f.kick.y += (Math.random() - 0.5) * k * 1.5;
           }
         }
-        f.vel.addScaledVector(f.off, -SPRING * dt).multiplyScalar(Math.max(0, 1 - DAMP * dt));
+        // 변성대왕이 노려보면 그 반대쪽으로 도망가 있다가, 마우스를 떼면 스프링으로 제자리에
+        const king = this.blocks?.king;
+        _aim.set(0, 0, 0);
+        if (king) {
+          _sp.set(x, y, f.base.z).project(this.bgCam);
+          const dx = ((_sp.x + 1) / 2) * w - king.x;
+          const dy = ((1 - _sp.y) / 2) * h - king.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const far = (20 - f.base.z) * FLEE * (1 + f.phase * 0.03);
+          _aim.set((dx / d) * far, (-dy / d) * far, 0);
+          f.kick.x += (Math.random() - 0.5) * 6 * dt;
+          f.kick.y += (Math.random() - 0.5) * 6 * dt;
+        }
+        f.vel.addScaledVector(_aim.sub(f.off), SPRING * dt).multiplyScalar(Math.max(0, 1 - DAMP * dt));
         f.off.addScaledVector(f.vel, dt);
         f.kick.multiplyScalar(Math.max(0, 1 - 1.8 * dt));
 

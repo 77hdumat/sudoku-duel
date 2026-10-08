@@ -67,7 +67,7 @@ export class UiBlocks {
   private repaintAll = false;
   private mouse = { x: -1e4, y: -1e4 };
   /** 마우스가 올라간 변성대왕 얼굴의 화면 위치 — 다른 봇들이 겁먹고 그쪽을 본다 */
-  private king: { x: number; y: number } | null = null;
+  king: { x: number; y: number } | null = null;
 
   constructor(private readonly scene: THREE.Scene) {
     document.fonts?.addEventListener('loadingdone', () => (this.repaintAll = true));
