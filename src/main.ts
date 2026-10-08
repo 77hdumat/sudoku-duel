@@ -181,6 +181,7 @@ function kingSays(wrong: number): void {
   el.className = 'king-says';
   el.innerHTML = `${faceHtml('king', 'king-face', 'laugh')}<p>${lines[Math.floor(Math.random() * lines.length)]}</p>`;
   wrap.appendChild(el);
+  sfx.laugh();
   setTimeout(() => el.remove(), 4200);
 }
 

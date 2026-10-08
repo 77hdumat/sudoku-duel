@@ -141,10 +141,51 @@ const calm = {
     seq.forEach((n, i) => tone(st(C5, n), i * 0.1, i === seq.length - 1 ? 0.6 : 0.16, 'triangle', 0.35));
     seq.forEach((n, i) => tone(st(C5, n - 12), i * 0.1, 0.16, 'sine', 0.2));
   },
+  /** 변성대왕이 비웃을 때 (평소 화면엔 없음) */
+  laugh(): void {},
   lose(): void {
     [7, 4, 0, -5].forEach((n, i) => tone(st(C5, n), i * 0.16, i === 3 ? 0.5 : 0.18, 'triangle', 0.28));
   },
 };
+
+/**
+ * 변성대왕 녹음 소리 (public/assets/sfx, Pixabay Content License — 앞부분만 잘라 모노로 줄였다):
+ * gong = Asian Gong (freesound_community, 102397) · heartbeat = Heartbeat Single (universfield, 383748)
+ * bone = Bone Crack 1 (freesound_community, 84755) · growl = Monster Growl (dragon-studio, 376892)
+ * bell = Single Church Bell 2 (universfield, 352062) · whisper = Creepy Whisper (dragon-studio, 472369)
+ * laugh = Evil Laugh (dragon-studio, 431480) · cackle = Evil Laugh (freesound_community, 89423)
+ * choir = Dark Choir Singing (freesound_community, 16805)
+ */
+const SAMPLES = ['gong', 'heartbeat', 'bone', 'growl', 'bell', 'whisper', 'laugh', 'cackle', 'choir'];
+const buffers = new Map<string, AudioBuffer | null>();
+
+function load(name: string): void {
+  const a = ac();
+  if (!a || buffers.has(name)) return;
+  buffers.set(name, null);
+  fetch(`assets/sfx/${name}.mp3`)
+    .then((r) => r.arrayBuffer())
+    .then((b) => a.decodeAudioData(b))
+    .then((buf) => buffers.set(name, buf))
+    .catch(() => buffers.delete(name));
+}
+
+/** 받아 둔 녹음을 튼다. 아직 못 받았으면 false — 그땐 합성음으로 대신한다 */
+function sample(name: string, vol = 1): boolean {
+  const a = ac();
+  const buf = buffers.get(name);
+  if (!a || !master || !buf) {
+    load(name);
+    return false;
+  }
+  const src = a.createBufferSource();
+  src.buffer = buf;
+  const g = a.createGain();
+  g.gain.value = vol;
+  src.connect(g).connect(master);
+  src.start();
+  return true;
+}
 
 /** 종소리: 사인 + 비정수배 배음 — 장례식 종처럼 길게 울린다 */
 function bell(freq: number, at: number, dur: number, vol: number): void {
@@ -166,32 +207,43 @@ const dreadful: Partial<typeof calm> = {
     noise(0, 0.07, 3200, 5, 0.14);
   },
   correct(combo = 0): void {
+    if (sample('bone', 0.9)) return;
     const b = st(C5, -19 + Math.min(combo, 12));
     bell(b, 0, 0.9, 0.32);
     tone(st(b, 6), 0.05, 0.5, 'triangle', 0.12);
   },
   wrong(): void {
+    if (sample('growl', 1.1)) return;
     tone(95, 0, 0.6, 'sawtooth', 0.22, 42);
     tone(101, 0, 0.6, 'sawtooth', 0.16, 45);
     noise(0, 0.5, 180, 0.8, 0.5);
   },
   line(): void {
+    if (sample('bell', 0.8)) return;
     [12, 9, 6, 3, 0].forEach((n, i) => tone(st(C5, n - 12), i * 0.09, 0.45, 'triangle', 0.26));
     bell(st(C5, -24), 0.45, 1.4, 0.3);
   },
   hint(): void {
+    if (sample('whisper', 1.2)) return;
     noise(0, 0.9, 1400, 0.7, 0.18);
     tone(st(C5, -12), 0, 0.9, 'sine', 0.16, st(C5, -6));
   },
   countdown(last = false): void {
+    // 시작 신호는 징, 그 전엔 심장 소리
+    if (sample(last ? 'gong' : 'heartbeat', last ? 1 : 1.2)) return;
     bell(last ? 98 : 73.4, 0, last ? 2 : 0.9, 0.42);
   },
   win(): void {
+    if (sample('choir', 1)) return;
     // 단조 오르간 — 이겼어도 축하보다 '살아남았다'
     [0, 3, 7, 12, 15, 19].forEach((n, i) => tone(st(C5, n - 24), i * 0.18, i === 5 ? 1.6 : 0.5, 'sawtooth', 0.12));
     bell(st(C5, -24), 1.0, 2.2, 0.35);
   },
+  laugh(): void {
+    sample('cackle', 1);
+  },
   lose(): void {
+    if (sample('laugh', 1)) return;
     // 낮게 끌리는 크크크
     for (let i = 0; i < 5; i++) tone(st(C5, -14 - i * 2), i * 0.17, 0.15, 'sawtooth', 0.2, st(C5, -18 - i * 2));
     noise(0, 1.2, 140, 0.7, 0.45);
@@ -206,4 +258,5 @@ export const sfx = Object.fromEntries(
 /** 변성대왕 게임 화면이면 무서운 소리로 */
 sfx.setDread = (on: boolean) => {
   dread = on;
+  if (on) SAMPLES.forEach(load);
 };
