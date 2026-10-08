@@ -317,29 +317,9 @@ input:focus {
   height: 110px;
   transition: transform 0.2s;
 }
-/* 호버하면 비웃는 얼굴로 바뀌어 킬킬거리며 들썩인다 (블록 윗면은 img 위치가 바뀔 때마다 다시 그린다) */
+/* 호버하면 비웃는 얼굴로 바뀌어 살짝 떠오른다 */
 .bot img.cackle {
-  animation: cackle 0.32s steps(1) infinite;
-}
-@keyframes cackle {
-  0% {
-    transform: translate(0, -4px);
-  }
-  25% {
-    transform: translate(-2px, -7px);
-  }
-  50% {
-    transform: translate(1px, -3px);
-  }
-  75% {
-    transform: translate(2px, -6px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .bot img.cackle {
-    animation: none;
-    transform: translateY(-4px);
-  }
+  transform: translateY(-4px);
 }
 .bot b {
   font-size: 20px;
