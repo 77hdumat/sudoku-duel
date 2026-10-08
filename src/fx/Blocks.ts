@@ -66,6 +66,8 @@ export class UiBlocks {
   private items = new Map<HTMLButtonElement, Blk>();
   private repaintAll = false;
   private mouse = { x: -1e4, y: -1e4 };
+  /** 마우스가 올라간 변성대왕 얼굴의 화면 위치 — 다른 봇들이 겁먹고 그쪽을 본다 */
+  private king: { x: number; y: number } | null = null;
 
   constructor(private readonly scene: THREE.Scene) {
     document.fonts?.addEventListener('loadingdone', () => (this.repaintAll = true));
@@ -76,6 +78,12 @@ export class UiBlocks {
   }
 
   update(dt: number): void {
+    this.king = null;
+    for (const b of this.items.values())
+      if (b.over && b.el.matches('.bot.king')) {
+        const q = b.el.querySelector('img')!.getBoundingClientRect();
+        this.king = { x: q.left + q.width / 2, y: q.top + q.height / 2 };
+      }
     const seen = new Set<HTMLButtonElement>();
     document.querySelectorAll<HTMLButtonElement>(SELECTOR).forEach((el) => {
       seen.add(el);
@@ -191,8 +199,10 @@ export class UiBlocks {
     const k = q.height / b.bot.height;
     b.bot.root.position.set(q.left + q.width / 2 - (r.left + r.width / 2), -(q.top + q.height / 2 - (r.top + r.height / 2)), b.depth / 2 + 2 + b.bot.back * k);
     b.bot.root.scale.setScalar(k);
-    const gaze = { x: clamp((this.mouse.x - (q.left + q.width / 2)) / 300, -1, 1), y: clamp(-(this.mouse.y - (q.top + q.height / 2)) / 300, -1, 1) };
-    b.bot.update(dt, b.over ? 1 : 0, gaze);
+    const scared = this.king && !b.over ? this.king : null;
+    const look = scared ?? this.mouse;
+    const gaze = { x: clamp((look.x - (q.left + q.width / 2)) / 300, -1, 1), y: clamp(-(look.y - (q.top + q.height / 2)) / 300, -1, 1) };
+    b.bot.update(dt, b.over ? 1 : 0, gaze, 0, scared ? 1 : 0);
   }
 
   /** 버튼 속 이미지·배경 있는 요소·글자를 화면 배치 그대로 캔버스에 */

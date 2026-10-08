@@ -133,11 +133,13 @@ void main() {
   }
   col *= opacity;
   col.a = col.r;
+  col.rgb *= color;
   gl_FragColor = col;
 }`;
 
 const box = new THREE.BoxGeometry(1, 1, 1);
 let tex: THREE.Texture | null = null;
+const worldScale = new THREE.Vector3();
 
 export class Fire extends THREE.Mesh<THREE.BoxGeometry, THREE.ShaderMaterial> {
   constructor(color = 0xffffff) {
@@ -180,7 +182,8 @@ export class Fire extends THREE.Mesh<THREE.BoxGeometry, THREE.ShaderMaterial> {
     (u.invModelMatrix.value as THREE.Matrix4).copy(this.matrixWorld).invert();
     u.time.value = time;
     u.opacity.value = opacity;
-    (u.scale.value as THREE.Vector3).copy(this.scale);
+    // 부모(봇 얼굴 등)가 키워져 있으면 광선 간격도 화면 크기 기준이어야 한다
+    (u.scale.value as THREE.Vector3).copy(this.getWorldScale(worldScale));
   }
 
   dispose(): void {

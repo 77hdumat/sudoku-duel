@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { Fire } from './Fire';
 
 /**
  * AI 봇 3D 얼굴 (외부 모델 없이 three.js 기본 도형으로): 머리·눈·눈썹·입·소품을 따로 만들어
  * three.js 'morph targets - face' 예제처럼 표정을 움직인다 — 깜빡임, 봇마다 다른 시선, 마우스를 올리면
- * 꼬마봇은 부끄러워하고 스도봇은 당황하고 마스터봇은 씩 웃고 지옥봇은 불을 뿜고 변성대왕은 눈이 시뻘게져 피눈물을 흘리며 등 뒤로 불길이 솟는다.
+ * 꼬마봇은 부끄러워하고 스도봇은 당황하고 마스터봇은 씩 웃고 지옥봇은 불을 뿜고 변성대왕은 눈이 시뻘게지고 등 뒤로 불길과 피가 튄다.
+ * 변성대왕에게 마우스를 올리면 다른 봇들은 겁에 질려 변성대왕을 쳐다보며 부들부들 떤다 (fear).
  * 비웃을 때(변성대왕 도발)는 눈썹이 내려오고 눈을 가늘게 뜨며 입을 벌리고 크크크 들썩인다.
  *
  * 쓰는 곳 두 군데:
@@ -239,10 +241,12 @@ export class Face {
   private blush: THREE.Object3D[] = [];
   private sweat?: THREE.Group;
   private fire: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>[] = [];
-  /** 변성대왕이 노려보면 눈에서 흐르는 피눈물: 볼을 따라 길어지는 줄기 + 떨어지는 방울 */
-  private tears: THREE.Mesh[] = [];
-  private drops: THREE.Mesh[] = [];
+  /** 변성대왕이 노려보면 머리 뒤에서 사방으로 튀는 핏방울 */
+  private blood: THREE.Mesh[] = [];
+  /** 변성대왕 등 뒤 볼륨 불길 (밑동 x·y, 폭·높이) */
+  private aura: { f: Fire; x: number; y: number; w: number; h: number; seed: number }[] = [];
   private mood = 0;
+  private fear = 0;
   private hov = 0;
   private blinkAt = 1 + Math.random() * 3;
 
@@ -328,31 +332,32 @@ export class Face {
         this.fire.push(p);
       }
     }
-    // 변성대왕: 머리 뒤로 솟는 검붉은 불길 + 피눈물
+    // 변성대왕: 머리 뒤로 솟는 검붉은 불길 + 튀는 피
     if (kind === 'king') {
-      const ball = new THREE.SphereGeometry(1, 10, 8);
-      for (let k = 0; k < 70; k++) {
-        const p = new THREE.Mesh(ball, new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-        p.userData = { x: (Math.random() - 0.5) * 3.4, z: -0.1 - Math.random() * 0.5, k: Math.random() };
-        p.visible = false;
-        this.head.add(p);
-        this.fire.push(p);
+      // 머리에 가려지도록 깊이 검사를 켠다 (얼굴 앞을 덮지 않고 윤곽 둘레로만 보이게).
+      // 고개를 돌려도 한쪽이 머리 속으로 들어가 사라지지 않게 머리가 아니라 root 에 붙인다
+      for (const [x, y, w, hh] of [
+        [0, -0.8, 2.4, 4.4],
+        [-1.0, -1.0, 1.5, 3.0],
+        [1.0, -1.0, 1.5, 3.0],
+      ]) {
+        const f = new Fire(0xff7a40);
+        f.material.depthTest = true;
+        f.visible = false;
+        this.root.add(f);
+        this.aura.push({ f, x, y, w, h: hh, seed: Math.random() * 10 });
       }
-      const blood = mat(0xb0000c, { emissive: 0x500000, rough: 0.15 });
-      for (const s of [-1, 1]) {
-        const tear = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 1, 4, 8), blood);
-        tear.position.set(s * 0.38, 0, 0.86);
-        tear.visible = false;
-        this.head.add(tear);
-        this.tears.push(tear);
-        for (let k = 0; k < 4; k++) {
-          const d = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 8), blood);
-          d.scale.y = 1.6;
-          d.userData = { s, k: k / 4 };
-          d.visible = false;
-          this.head.add(d);
-          this.drops.push(d);
-        }
+      const red = new THREE.MeshBasicMaterial({ color: 0x9a0010 });
+      const drop = new THREE.SphereGeometry(1, 10, 8);
+      for (let k = 0; k < 36; k++) {
+        const d = new THREE.Mesh(drop, red);
+        // 위쪽 반원으로 뿜어져 나갔다가 떨어진다
+        const a = Math.PI * (0.08 + Math.random() * 0.84);
+        const v = 2.2 + Math.random() * 1.6;
+        d.userData = { vx: Math.cos(a) * v, vy: Math.sin(a) * v, z: -0.3 - Math.random() * 0.4, r: 0.05 + Math.random() * 0.07, k: Math.random() };
+        d.visible = false;
+        this.head.add(d);
+        this.blood.push(d);
       }
     }
   }
@@ -361,14 +366,16 @@ export class Face {
    * 매 프레임: hover 0..1 = 마우스를 올렸을 때 봇마다 다른 반응, laugh 0..1 = 비웃으며 크크크 (변성대왕 도발).
    * gaze = 마우스 방향(-1..1). 평소에도 봇마다 바라보는 곳이 다르다.
    */
-  update(dt: number, hover: number, gaze = { x: 0, y: 0 }, laugh = 0): void {
+  update(dt: number, hover: number, gaze = { x: 0, y: 0 }, laugh = 0, fear = 0): void {
     const L = this.look;
     const t = (performance.now() - t0) / 1000;
     const ease = Math.min(1, dt * 7);
     this.mood += (laugh - this.mood) * ease;
     this.hov += (hover - this.hov) * Math.min(1, dt * 4);
+    this.fear += (fear - this.fear) * Math.min(1, dt * 6);
     const m = this.mood;
-    const h = this.hov * (1 - m);
+    const f = this.fear * (1 - m);
+    const h = this.hov * (1 - m) * (1 - f);
     const cackle = Math.abs(Math.sin(t * 17));
     const away = gaze.x > 0 ? -1 : 1;
 
@@ -468,33 +475,40 @@ export class Face {
           sm.emissiveIntensity = 1.2 + h * 2.5;
         }
         for (const iris of this.irises) iris.scale.setScalar(1 - h * 0.35);
-        // 뒤에서 불길이 치솟는다: 아래에서 위로 오르며 주황 → 검붉게 식고 가늘어진다
-        for (const p of this.fire) {
-          const { x, z, k } = p.userData as { x: number; z: number; k: number };
-          const life = (t * 0.9 + k) % 1;
-          p.visible = h > 0.03;
-          p.position.set(x * (1 - life * 0.5) + Math.sin(t * 6 + k * 20) * 0.1, -1.2 + life * 3.6, z);
-          p.scale.set((0.5 - life * 0.35) * h, (0.7 - life * 0.4) * h, 0.4 * h);
-          p.material.color.setHSL(0.05 - life * 0.05, 1, 0.42 - life * 0.25);
-          p.material.opacity = Math.sin(life * Math.PI) * h * 0.5;
+        // 뒤에서 불길이 치솟는다
+        for (const a of this.aura) {
+          a.f.visible = h > 0.03;
+          if (!a.f.visible) continue;
+          const hh = a.h * (0.5 + 0.5 * h);
+          a.f.scale.set(a.w, hh, a.w);
+          a.f.position.set(a.x, a.y + hh / 2, -0.3 - a.w / 2);
+          a.f.update(a.seed + t * 1.3, h);
         }
-        // 피눈물: 눈 밑에서 줄기가 볼을 타고 내려가고, 끝에서 방울이 떨어진다
-        const len = h * 0.75;
-        for (const tear of this.tears) {
-          tear.visible = h > 0.03;
-          tear.scale.y = Math.max(0.01, len);
-          tear.position.y = 0.0 - (len * 1.07) / 2;
-          tear.position.z = 0.86 - len * 0.18;
-        }
-        for (const d of this.drops) {
-          const { s, k } = d.userData as { s: number; k: number };
-          const life = (t * 0.8 + k) % 1;
-          d.visible = h > 0.5;
-          d.position.set(s * 0.38, -len * 1.07 - life * 1.1, 0.86 - len * 0.36 - life * 0.1);
-          d.scale.set(h, 1.6 * h, h);
+        // 피: 머리 뒤에서 사방으로 뿜어져 포물선을 그리며 떨어지고, 떨어질수록 작아진다
+        for (const d of this.blood) {
+          const { vx, vy, z, r, k } = d.userData as { vx: number; vy: number; z: number; r: number; k: number };
+          const life = (t * 0.75 + k) % 1;
+          d.visible = h > 0.3;
+          d.position.set(vx * life, 0.3 + vy * life - 3.2 * life * life, z);
+          const sz = r * (1 - life * 0.6) * h;
+          d.scale.set(sz, sz * (1 + life), sz);
         }
         break;
       }
+    }
+
+    // 겁먹음 (변성대왕에게 마우스를 올렸을 때 다른 봇들): 눈을 크게 뜨고 변성대왕 쪽을 보며, 입은 '히익', 부들부들
+    if (f > 0.01) {
+      ex = mix(ex, gaze.x, f);
+      ey = mix(ey, gaze.y, f);
+      ry = mix(ry, gaze.x * 0.45, f);
+      rx = mix(rx, 0.12, f);
+      rz = mix(rz, -gaze.x * 0.1, f);
+      open = mix(open, 1.35, f);
+      mouthY = mix(mouthY, 0.32, f);
+      mouthX = mix(mouthX, 0.45, f);
+      mouthTilt = mix(mouthTilt, 0, f);
+      blink = f < 0.5;
     }
 
     // 깜빡임 (비웃는 중엔 가늘게 뜬 채로)
@@ -504,17 +518,18 @@ export class Face {
       lid = Math.min(1, Math.abs(this.blinkAt + 0.07) / 0.07);
       if (this.blinkAt < -0.14) this.blinkAt = 2 + Math.random() * 3;
     }
-    const squint = 1 - 0.5 * Math.max(m, L.anger * 0.4);
+    const squint = 1 - 0.5 * Math.max(m, L.anger * 0.4 * (1 - f));
     for (const e of this.eyes) e.scale.y = Math.max(0.08, lid * squint * open);
     for (const iris of this.irises) iris.position.set(ex * 0.06, ey * 0.05, 0.11);
 
     // 눈썹: 안쪽 끝이 내려가면 화난 얼굴. 마스터봇은 씩 웃을 때 한쪽 눈썹을 치켜든다
-    const anger = Math.min(1, L.anger + m * 0.7 + (this.kind === 'king' ? h * 0.3 : 0));
+    // 겁먹으면 안쪽 끝이 올라가 울상
+    const anger = mix(Math.min(1, L.anger + m * 0.7 + (this.kind === 'king' ? h * 0.3 : 0)), -0.5, f);
     this.brows.forEach((b, k) => {
       const s = k ? 1 : -1;
       const cocky = this.kind === 'hard' && k === 0 ? h : 0;
       b.rotation.z = s * anger * 0.5 * (1 - cocky * 1.4);
-      b.position.y = 0.47 - anger * 0.08 + (1 - anger) * m * 0.05 + cocky * 0.14;
+      b.position.y = 0.47 - anger * 0.08 + (1 - anger) * m * 0.05 + cocky * 0.14 + f * 0.06;
     });
 
     // 입: 봇마다 평소 모양 → 비웃으면 크게 벌리고 들썩
@@ -523,7 +538,9 @@ export class Face {
 
     // 머리: 웃을 땐 고개를 젖히며 들썩
     this.head.rotation.set(mix(rx + ey * -0.1, -(0.12 + 0.08 * cackle), m), mix(ry + ex * 0.1, Math.sin(t * 9) * 0.06, m), mix(rz, Math.sin(t * 9) * 0.06, m));
-    this.head.position.y = bob + m * cackle * 0.06;
+    this.head.position.y = bob + m * cackle * 0.06 + f * Math.sin(t * 53) * 0.025;
+    this.head.position.x = f * Math.sin(t * 71) * 0.04;
+    this.head.rotation.z += f * Math.sin(t * 61) * 0.04;
   }
 }
 
