@@ -142,6 +142,8 @@ interface Floater {
   vel: THREE.Vector3;
   /** 밀릴 때 더해지는 회전 (점점 줄어든다) */
   kick: THREE.Vector3;
+  /** 변성대왕 중압감에 떨어진 뒤 흐른 시간(초), 0 이면 평소 */
+  drop: number;
 }
 
 /** 밀림 스프링: 세기·감쇠 (클수록 빨리 돌아온다) */
@@ -149,10 +151,10 @@ const SPRING = 7;
 const DAMP = 3.2;
 /** 마우스가 이 픽셀 반경 안을 지나가면 밀어낸다 */
 const PUSH_RADIUS = 110;
-/** 변성대왕에게 마우스를 올리면 배경 블록이 변성대왕에게서 이만큼(깊이 비례) 달아난다 — 화면 밖까지 */
-const FLEE = 0.75;
+/** 변성대왕에게 마우스를 올리면 중압감에 배경 블록이 후두둑 떨어진다: 중력, 블록마다 늦게 떨어지는 최대 시간(초) */
+const DROP_G = 45;
+const DROP_STAGGER = 0.45;
 const _sp = new THREE.Vector3();
-const _aim = new THREE.Vector3();
 
 interface Tween {
   t: number;
@@ -375,6 +377,7 @@ export class Fx {
       off: new THREE.Vector3(),
       vel: new THREE.Vector3(),
       kick: new THREE.Vector3(),
+      drop: 0,
     });
   }
 
@@ -413,6 +416,7 @@ export class Fx {
       const h = innerHeight;
       const moved = this.pxPrev.x > -9000 ? Math.min(80, this.px.distanceTo(this.pxPrev)) : 0;
       this.pxPrev.copy(this.px);
+      const king = this.blocks?.king;
       for (const f of this.floaters) {
         if (f.rise) {
           f.base.y += f.rise * dt;
@@ -440,20 +444,23 @@ export class Fx {
             f.kick.y += (Math.random() - 0.5) * k * 1.5;
           }
         }
-        // 변성대왕이 노려보면 그 반대쪽으로 도망가 있다가, 마우스를 떼면 스프링으로 제자리에
-        const king = this.blocks?.king;
-        _aim.set(0, 0, 0);
+        // 변성대왕이 노려보면 중압감에 하나둘 후두둑 떨어져 화면 밖에 머물고, 마우스를 떼면 스프링으로 제자리에
         if (king) {
-          _sp.set(x, y, f.base.z).project(this.bgCam);
-          const dx = ((_sp.x + 1) / 2) * w - king.x;
-          const dy = ((1 - _sp.y) / 2) * h - king.y;
-          const d = Math.hypot(dx, dy) || 1;
-          const far = (20 - f.base.z) * FLEE * (1 + f.phase * 0.03);
-          _aim.set((dx / d) * far, (-dy / d) * far, 0);
-          f.kick.x += (Math.random() - 0.5) * 6 * dt;
-          f.kick.y += (Math.random() - 0.5) * 6 * dt;
+          f.drop += dt;
+          if (f.drop > ((f.phase * 0.37) % 1) * DROP_STAGGER) {
+            const floor = -(y + (20 - f.base.z) * 0.6 + 2);
+            if (f.off.y > floor) {
+              if (f.vel.y >= 0) {
+                f.kick.x += (Math.random() - 0.5) * 3;
+                f.kick.y += (Math.random() - 0.5) * 3;
+              }
+              f.vel.y -= DROP_G * dt;
+            } else f.vel.set(0, 0, 0);
+          }
+        } else {
+          f.drop = 0;
+          f.vel.addScaledVector(f.off, -SPRING * dt).multiplyScalar(Math.max(0, 1 - DAMP * dt));
         }
-        f.vel.addScaledVector(_aim.sub(f.off), SPRING * dt).multiplyScalar(Math.max(0, 1 - DAMP * dt));
         f.off.addScaledVector(f.vel, dt);
         f.kick.multiplyScalar(Math.max(0, 1 - 1.8 * dt));
 
