@@ -842,6 +842,7 @@ input:focus {
   margin-top: 10px;
 }
 .tool {
+  position: relative;
   min-width: 0;
   padding-left: 4px;
   padding-right: 4px;
@@ -849,8 +850,17 @@ input:focus {
   background: var(--soft);
   color: var(--ink);
 }
-/* 도구가 6개(변성대왕 싱글)면 단축키 표시를 빼서 글자가 잘리지 않게 */
-.tools:has(> :nth-child(6)) kbd {
+/* 단축키는 숫자 버튼처럼 오른쪽 위 구석에 작게 — 글자 폭을 먹지 않아 버튼 밖으로 넘치지 않는다 */
+.tool kbd {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  padding: 0 3px;
+  font-size: 9px;
+  line-height: 13px;
+}
+/* 도구가 5개 이상(지옥·변성대왕)이면 버튼이 좁아 구석 단축키가 글자와 겹치므로 뺀다 */
+.tools:has(> :nth-child(5)) kbd {
   display: none;
 }
 .tools:has(> :nth-child(6)) .tool {
@@ -1613,12 +1623,13 @@ button,
     font-size: 9px;
   }
   .tools {
-    /* 좁은 화면: 3칸씩 줄 맞춤 (5~6개면 두 줄) */
-    grid-auto-flow: row;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+    /* 좁은 화면: 한 줄에 3개씩, 남는 줄(5개면 2개)은 빈칸 없이 늘려 채운다. 줄 간격은 블록 아랫면 두께만큼 */
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 6px;
   }
   .tool {
+    flex: 1 1 28%;
     padding: 8px 4px;
     font-size: 14px;
   }
@@ -1721,7 +1732,8 @@ button,
     grid-template-columns: 56px auto 1fr;
     grid-template-areas:
       'img chip name'
-      'img blurb blurb';
+      'img blurb blurb'
+      'img rules rules';
     align-items: center;
     column-gap: 10px;
     row-gap: 2px;
@@ -1746,6 +1758,19 @@ button,
     grid-area: blurb;
     font-size: 12px;
     word-break: keep-all;
+    text-align: left;
+  }
+  .bot .bot-rules {
+    grid-area: rules;
+    justify-self: start;
+    margin-top: 4px;
+    padding: 4px 8px;
+    text-align: left;
+    white-space: normal;
+    font-size: 11px;
+  }
+  .bot .bot-rules li + li {
+    margin-top: 0;
   }
   .setup h2 {
     font-size: 20px;
