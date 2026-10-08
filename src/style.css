@@ -2484,3 +2484,57 @@ textarea {
     animation: none;
   }
 }
+
+/* 변성대왕 채점 대사: 판 가운데 떠올랐다 사라진다. 클릭은 통과 */
+.king-says {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  animation: king-says 4.2s ease-in-out forwards;
+}
+.king-says img {
+  width: min(34%, 160px);
+  filter: drop-shadow(0 0 18px rgba(229, 48, 63, 0.85));
+  animation: cackle 0.32s steps(1) infinite;
+}
+.king-says p {
+  margin: 0;
+  max-width: 88%;
+  padding: 8px 14px;
+  border: 1.5px solid #e5303f;
+  border-radius: 14px;
+  background: rgba(20, 4, 6, 0.88);
+  color: #ffd9d9;
+  font-weight: 800;
+  font-size: clamp(13px, 3.6vw, 17px);
+  line-height: 1.4;
+  text-align: center;
+  word-break: keep-all;
+}
+@keyframes king-says {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  12%,
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .king-says,
+  .king-says img {
+    animation: none;
+  }
+}

@@ -159,6 +159,27 @@ function hellFire(board: Board, i: number, big = false): void {
 }
 
 /** 변성대왕 완주: 판 전체가 아래 줄부터 차례로 타오른다 */
+/** 변성대왕 채점: 틀린 개수가 많을수록 더 크게 비웃는다 */
+const KING_LINES: [number, string[]][] = [
+  [1, ['딱 한 칸… 아깝구나. 다시 보거라.', '한 칸이라도 틀리면 통과는 없다.']],
+  [3, ['찍었구나? 내 눈은 못 속인다.', '추론은 어디 두고 왔느냐?']],
+  [7, ['이 정도로 내 판을 넘보다니, 가소롭다!', '지옥 문턱에서 길을 잃었구나.']],
+  [Infinity, ['크하하하! 이건 스도쿠가 아니라 복권이다!', '전부 다시 생각해라. 지옥은 아직 멀었다!']],
+];
+
+/** 판 위로 변성대왕 얼굴이 떠올라 대사를 치고 사라진다 (클릭은 그대로 통과 — 재시작·버튼 사용 가능) */
+function kingSays(wrong: number): void {
+  const wrap = $('.board-wrap');
+  if (!wrap) return;
+  const lines = KING_LINES.find(([max]) => wrong <= max)![1];
+  wrap.querySelector('.king-says')?.remove();
+  const el = document.createElement('div');
+  el.className = 'king-says';
+  el.innerHTML = `<img src="assets/bot-king-laugh.svg" alt="변성대왕" /><p>${lines[Math.floor(Math.random() * lines.length)]}</p>`;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+
 function inferno(board: Board): void {
   const n = Math.sqrt(board.grid.length);
   for (let c = 0; c < n; c++)
@@ -401,6 +422,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
   board.onChecked = (n) => {
     h.banner(`틀린 칸 ${n}개! 빨간 칸을 고쳐 보세요 (실수 +${n})`);
     setTimeout(() => !h.ended && h.banner(''), 2600);
+    if (o.level === 'king') kingSays(n);
   };
   if (o.explain) {
     // 풀이로 지운 후보는 이어서 쓴다 (다음 풀이가 같은 단계를 되풀이하지 않게)
