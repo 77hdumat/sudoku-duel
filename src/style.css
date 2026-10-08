@@ -345,8 +345,33 @@ input:focus {
   font-size: 20px;
 }
 .bot small {
+  word-break: keep-all;
+  text-wrap: balance;
+  line-height: 1.45;
+  text-align: center;
+}
+.bot small {
   color: var(--muted);
   font-weight: 400;
+}
+.bot-rules {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 6px 10px;
+  border-radius: 12px;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+  background: rgb(0 0 0 / 6%);
+  font-size: 12px;
+  font-weight: 600;
+}
+.bot.hell .bot-rules,
+.bot.king .bot-rules {
+  background: rgb(255 255 255 / 9%);
+}
+.bot-rules li + li {
+  margin-top: 2px;
 }
 .bot.easy:hover {
   border-color: #7cc48a;

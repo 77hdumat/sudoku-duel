@@ -15,10 +15,10 @@ const fewer = (a: Entry, b: Entry) => (a.mistakes ?? 0) - (b.mistakes ?? 0);
 
 /** 레이스 계열: 실수 하나에 더해지는 시간 */
 export const MISTAKE_PENALTY_MS = 10_000;
-/** 지옥: 추론 없이 찍는 사람이 많아서 실수 하나에 7분 */
+/** 지옥·변성대왕: 추론 없이 찍는 사람이 많아서 실수 하나에 7분 */
 export const HELL_PENALTY_MS = 7 * 60_000;
 
-export const penaltyFor = (level: string): number => (level === 'hell' ? HELL_PENALTY_MS : MISTAKE_PENALTY_MS);
+export const penaltyFor = (level: string): number => (level === 'hell' || level === 'king' ? HELL_PENALTY_MS : MISTAKE_PENALTY_MS);
 /** '10초' · '7분' */
 export const penaltyText = (ms: number): string => (ms >= 60_000 && ms % 60_000 === 0 ? `${ms / 60_000}분` : `${Math.round(ms / 1000)}초`);
 

@@ -387,7 +387,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         <button class="ghost" id="quit">나가기</button>
       </div>
       ${o.level === 'hell' && !o.shared && store.get('noGuess.hell', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 지옥: 실수 하나에 +7분!<br />찍지 말고 추론으로 풀어 주세요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
-      ${o.level === 'king' && store.get('noGuess.king', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요. 틀려도 바로 알려 주지 않아요.<br />모든 정답은 추론에 기반해서 풀어 주세요. 다 채우면 채점해요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
+      ${o.level === 'king' && store.get('noGuess.king', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요. 틀려도 바로 알려 주지 않아요.<br />다 채우면 채점하고, 틀린 칸 하나에 +7분이에요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
       <div class="board-wrap"><div class="board" id="board"></div><div class="countdown" id="cd"><b>3</b></div><div class="banner" id="banner"></div></div>
       <div class="pad" id="pad"></div>
     </main>
@@ -651,10 +651,13 @@ function singleSetup(): void {
     <div class="bots">
       ${LEVEL_KEYS.map((l) => {
         const p = AI_PROFILES[l];
+        const pen = penaltyText(penaltyFor(l));
+        const rules = l === 'king' ? ['🏆 대회 룰', '틀려도 알려 주지 않아요', `틀리면 소요 시간 +${pen}`] : [`실수 하나에 +${pen}`];
         return `<button class="bot ${l}" data-level="${l}">
           <img src="${p.avatar}" alt="" data-bot="${l}" />
           <span class="chip">${LEVELS[l].label}</span>
           <b>${p.name}</b><small>${p.blurb}</small>
+          <ul class="bot-rules">${rules.map((r) => `<li>${r}</li>`).join('')}</ul>
         </button>`;
       }).join('')}
     </div>
@@ -663,7 +666,8 @@ function singleSetup(): void {
     app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('on', (b.dataset.mode === '1') === items));
     app.querySelectorAll<HTMLButtonElement>('[data-size]').forEach((b) => b.classList.toggle('on', Number(b.dataset.size) === size));
     app.querySelectorAll<HTMLButtonElement>('.bot[data-level]').forEach((b) => b.classList.toggle('hidden', !levelsFor(size).includes(b.dataset.level as Level)));
-    $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('나 빼고 전원에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : `먼저 끝나도 계속! 기록 = 완주 시간 + 실수당 ${MISTAKE_PENALTY_MS / 1000}초 (지옥은 실수당 7분!).`;
+    $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('나 빼고 전원에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : '';
+    $('#mode-desc')!.hidden = !items;
   };
   app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(
     (b) =>
@@ -725,8 +729,7 @@ function startSingle(level: Level, items: boolean, size: Size): void {
       <h3>실시간 순위</h3>
       <div class="standings" id="stand"></div>
       <p class="hint mini-title">${prof.name} 의 판</p>
-      <div class="mini${size === 6 ? ' six' : ''}" id="ai-mini">${puzzle.map((v) => `<i class="${v ? 'g' : ''}"></i>`).join('')}</div>
-      <p class="hint">먼저 끝나도 계속! 기록 = 완주 시간 + 실수당 ${penaltyText(penaltyFor(level))}.</p>`,
+      <div class="mini${size === 6 ? ' six' : ''}" id="ai-mini">${puzzle.map((v) => `<i class="${v ? 'g' : ''}"></i>`).join('')}</div>`,
     onProgress(f, m) {
       meR.filled = f;
       meR.mistakes = m;
