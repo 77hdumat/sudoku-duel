@@ -93,8 +93,8 @@ describe('J (조사)', () => {
 });
 
 describe('변성대왕 판 은행', () => {
-  it('변형한 판도 막히는 지점(포싱)이 여러 번이다', () => {
-    for (const k of [1, 2]) {
+  it('변형한 판도 막히는 지점(포싱)이 5번 이상이고, 끝까지 탐색하는 단계는 없다', () => {
+    for (const k of [1, 2, 3, 4]) {
       const { puzzle, solution } = generate('king', mulberry32(k * 977));
       const grid = puzzle.slice();
       const ruledOut = new Array(81).fill(0);
@@ -103,14 +103,16 @@ describe('변성대왕 판 은행', () => {
         const steps = explainNext(grid, ruledOut);
         for (const st of steps) {
           if (st.id === 'forcing') forcing++;
+          // 끝까지 탐색(전수 대입)으로만 찾는 단계는 서술이 3단계다 — 추론으로 풀려야 하니 없어야 한다
+          if (st.id === 'forcing') expect(st.phases.length).toBe(4);
           for (const e of st.elim) ruledOut[e.i] |= 1 << (e.d - 1);
         }
         const p = steps[steps.length - 1].place!;
         expect(p.v).toBe(solution[p.i]);
         grid[p.i] = p.v;
       }
-      // 돌리거나 뒤집으면 기법을 찾는 순서가 달라져 횟수가 조금 바뀐다 (은행엔 3번 이상인 판만 넣었다)
-      expect(forcing).toBeGreaterThanOrEqual(2);
+      // 돌리거나 뒤집으면 기법을 찾는 순서가 달라져 횟수가 조금 바뀐다 (은행엔 10번 이상인 판만 넣었다)
+      expect(forcing).toBeGreaterThanOrEqual(5);
     }
   }, 60000);
 });

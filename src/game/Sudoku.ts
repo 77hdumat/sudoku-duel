@@ -181,9 +181,9 @@ export function mulberry32(seed: number): () => number {
  * 니코리 관례대로 힌트 배치가 180° 회전 대칭이 되도록 i 와 80-i 를 함께 지운다.
  * 끝까지 푸는 데 꼭 필요한 기술 단계(Grade.ts)가 난이도의 tier 와 다르면 다시 만든다.
  */
-export function generate(level: Level, rand: () => number = Math.random, size: Size = 9): { puzzle: Grid; solution: Grid } {
-  if (level === 'king' && size === 9 && KING_BANK.length) return fromBank(rand);
-  if (level === 'king' && size === 6 && KING_BANK6.length) return fromBank6(rand);
+export function generate(level: Level, rand: () => number = Math.random, size: Size = 9, bank = true): { puzzle: Grid; solution: Grid } {
+  if (bank && level === 'king' && size === 9 && KING_BANK.length) return fromBank(rand);
+  if (bank && level === 'king' && size === 6 && KING_BANK6.length) return fromBank6(rand);
   const N = size * size;
   const target = size === 9 ? LEVELS[level].clues : (CLUES6[level] ?? 10);
   for (;;) {
@@ -206,7 +206,7 @@ export function generate(level: Level, rand: () => number = Math.random, size: S
 }
 
 /**
- * 변성대왕: 미리 골라 둔 판(scripts/gen-king.ts — 사람 기술로 막히는 지점이 3번 이상인 판)을 꺼내
+ * 변성대왕: 미리 골라 둔 판(scripts/gen-king.ts — AIC 로도 막혀 포싱 체인이 10번 이상 필요한 판)을 꺼내
  * 숫자 바꾸기(9!) × 돌리기·뒤집기(8) 로 변형한다. 변형해도 유일해·대칭·필요한 기술은 그대로라 난이도가 같다.
  * (그런 판은 수백 개 중 하나꼴이라 그 자리에서 만들면 몇 초씩 걸린다)
  */
