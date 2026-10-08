@@ -2,7 +2,7 @@ import './style.css';
 import { AI_PROFILES, AiSolver } from './game/Ai';
 import { ClaimJudge, type ClaimEvent } from './game/Claim';
 import { ATTACK_COMBO, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUntil } from './game/Combo';
-import { finalMs, MISTAKE_PENALTY_MS, penaltyFor, penaltyText, places, rankRace, rankScore, type Entry } from './game/Ranking';
+import { finalMs, GRADE_TRIES, gradedLater, HINT_PENALTY_MS, MISTAKE_PENALTY_MS, penaltyFor, penaltyText, places, rankRace, rankScore, type Entry, type Mode } from './game/Ranking';
 import { explainNext } from './game/Grade';
 import { autoNotesFor, candidates, fromStr, generate, geo, HINTS, LEVELS, levelsFor, SIZES, solve, toStr, type Grid, type Level, type Size } from './game/Sudoku';
 import { faceHtml } from './fx/Faces';
@@ -387,13 +387,13 @@ interface PlayOpts {
   side: string;
   chat: boolean;
   shared?: boolean;
-  /** autoMs = 자동 메모 벌점 합 */
-  onProgress?(filled: number, mistakes: number, autoMs: number): void;
+  /** autoMs = 자동 메모 벌점 합, hints = 쓴 힌트 수 */
+  onProgress?(filled: number, mistakes: number, autoMs: number, hints: number): void;
   onSolved?(ms: number): void;
   /** 카운트다운이 끝나고 게임이 진행 중일 때만 매 프레임 */
   tick?(dt: number): void;
-  /** 있으면 HUD 에 '포기' 버튼 */
-  onGiveUp?(): void;
+  /** 있으면 HUD 에 '포기' 버튼. eliminated = 틀린 채로 GRADE_TRIES 번 채점돼 탈락 */
+  onGiveUp?(eliminated?: boolean): void;
   /** 아이템전: HUD 에 콤보 게이지 */
   meter?: ComboMeter;
   hints?: number;
@@ -403,6 +403,9 @@ interface PlayOpts {
 }
 
 function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
+  const mode: Mode = o.shared ? 'claim' : o.meter ? 'item' : 'race';
+  const graded = gradedLater(o.level, mode);
+  const pen = penaltyText(penaltyFor(o.level, mode));
   show(`
   <div class="screen play${o.level === 'king' ? ' king' : ''}">
     <aside class="side">${o.side}</aside>
@@ -415,14 +418,13 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         ${o.onGiveUp ? '<button class="ghost" id="giveup">포기</button>' : ''}
         <button class="ghost" id="quit">나가기</button>
       </div>
-      ${o.level === 'hell' && !o.shared && store.get('noGuess.hell', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 지옥: 찍지 말고 추론으로 풀어 주세요.<br />실수 하나에 +30초!<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
-      ${o.level === 'king' && store.get('noGuess.king', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요. 틀려도 바로 알려 주지 않아요.<br />다 채우면 채점하고, 틀린 칸 하나에 +7분이에요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
+      ${graded && store.get(`noGuess.${o.level}`, '') !== 'off' ? `<p class="no-guess" role="alert">⚠️ ${o.level === 'king' ? '추측하지 마세요.' : '찍지 말고 추론으로 풀어 주세요.'} 틀려도 바로 알려 주지 않아요.<br />다 채우면 채점하고, 틀린 칸 하나에 +${pen} · ${GRADE_TRIES}번 틀리면 탈락이에요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>` : ''}
       <div class="board-wrap"><div class="board" id="board"></div><div class="countdown${o.level === 'king' ? ' king' : ''}" id="cd"><b>3</b></div><div class="banner" id="banner"></div></div>
       <div class="pad" id="pad"></div>
     </main>
     ${o.chat ? '<aside class="chat-slot" id="chat-slot"></aside>' : ''}
   </div>`);
-  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, autoNotesFor(o.level, puzzle.length === 36 ? 6 : 9), o.hints, o.explain, o.level === 'king' && !o.shared);
+  const board = new Board($('#board')!, $('#pad')!, puzzle, solution, o.shared, autoNotesFor(o.level, puzzle.length === 36 ? 6 : 9), o.hints, o.explain, graded);
   board.setColor(o.color);
   const timer = $('#timer')!;
   let t0 = 0;
@@ -447,7 +449,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
       b.classList.toggle('on', !!html);
     },
   };
-  board.onChange = (f, m, a) => o.onProgress?.(f, m, a);
+  board.onChange = (f, m, a, hn) => o.onProgress?.(f, m, a, hn);
   if (o.level === 'king') {
     const puts: { t: number; i: number }[] = [];
     board.onPut = (i) => {
@@ -458,11 +460,13 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
       kingRage(board, puts.splice(0).map((p) => p.i), () => h.ended);
     };
   }
-  board.onChecked = (n) => {
-    h.banner(`틀린 칸 ${n}개! 빨간 칸을 고쳐 보세요 (실수 +${n})`);
+  board.onChecked = (n, left) => {
+    h.banner(left > 0 ? `틀린 칸 ${n}개! 빨간 칸을 고쳐 보세요 (실수 +${n}) · 채점 기회 ${left}번 남음` : `틀린 채로 ${GRADE_TRIES}번 채점돼 탈락이에요`);
     setTimeout(() => !h.ended && h.banner(''), 2600);
     if (o.level === 'king') kingSays(n);
   };
+  // 막 찍는 사람 거르기: 틀린 채로 GRADE_TRIES 번 채점되면 포기 처리
+  board.onEliminated = () => o.onGiveUp?.(true);
   if (o.explain) {
     // 풀이로 지운 후보는 이어서 쓴다 (다음 풀이가 같은 단계를 되풀이하지 않게)
     const ruledOut = new Array(puzzle.length).fill(0);
@@ -560,7 +564,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     o.tick?.(dt);
     if (h.ended) return;
     timer.textContent = fmt(h.elapsed());
-    $('#miss')!.textContent = `실수 ${board.mistakes}${board.autoMs ? ` · 메모 +${fmt(board.autoMs)}` : ''}`;
+    $('#miss')!.textContent = `실수 ${board.mistakes}${board.hintsUsed ? ` · 힌트 +${fmt(board.hintsUsed * HINT_PENALTY_MS)}` : ''}${board.autoMs ? ` · 메모 +${fmt(board.autoMs)}` : ''}`;
     if (o.meter) {
       const c = $('#combo');
       c!.querySelector('b')!.textContent = String(o.meter.chain);
@@ -588,6 +592,8 @@ interface Racer extends Entry {
   cells?: string;
   /** AI 가 끝까지 풀었다고 치고 계산한 시간 */
   projected?: boolean;
+  /** 포기가 아니라 채점 실패로 탈락 */
+  eliminated?: boolean;
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -595,8 +601,8 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 const LEVEL_DESC: Record<Level, string> = {
   easy: `채워진 숫자 ${LEVELS.easy.clues}개 안팎 · 드러난/숨겨진 하나만으로 풀려요.`,
   medium: `채워진 숫자 ${LEVELS.medium.clues}개 안팎 · 교차로나 부분집합(쌍·삼총사)이 꼭 한 번은 필요해요.`,
-  hard: `채워진 숫자 ${LEVELS.hard.clues}개 안팎 · X-윙·황새치·XY-윙 같은 패턴 없이는 막혀요.`,
-  hell: `더 지우면 답이 여러 개가 될 때까지 숫자를 깎은 판 · 윙으로도 막혀서 W-윙·핀드 X-윙·X/XY-사슬이 필요해요. 실수 하나에 +30초! ✨ 자동 메모 가능`,
+  hard: `채워진 숫자 ${LEVELS.hard.clues}개 안팎 · X-윙·황새치·XY-윙 같은 패턴 없이는 막혀요. 레이스형은 다 채우면 채점(틀린 칸 +1분).`,
+  hell: `더 지우면 답이 여러 개가 될 때까지 숫자를 깎은 판 · 윙으로도 막혀서 W-윙·핀드 X-윙·X/XY-사슬이 필요해요. 레이스형은 다 채우면 채점(틀린 칸 +1분). ✨ 자동 메모 가능`,
   king: `더 지우면 답이 여러 개가 될 때까지 숫자를 깎은 판 · 교대 추론 사슬(AIC)까지 다 써도 막히는 곳이 5군데 이상 — 포싱 체인 같은 초고급 기술을 계속 써야 풀려요. 대회 극악 판 AI Escargot 급이에요. 🏆 대회 룰: 틀려도 바로 안 알려 주고, 다 채우면 한 번에 채점해요. ✨ 자동 메모 가능`,
 };
 
@@ -604,15 +610,32 @@ const LEVEL_DESC6: Partial<Record<Level, string>> = {
   easy: '6×6 · 숫자 1~6, 2×3 박스 · 채워진 숫자 20개.',
   medium: '6×6 · 채워진 숫자 12개 안팎 · 드러난/숨겨진 하나만으로 풀려요.',
   hard: '6×6 · 채워진 숫자 10개 안팎 · 교차로·부분집합 같은 기술이 꼭 필요해요. ✨ 자동 메모 가능',
-  hell: '6×6 · W-윙·X-사슬 같은 중급 사슬이 꼭 필요해요. 실수 하나에 +30초! ✨ 자동 메모 가능',
+  hell: '6×6 · W-윙·X-사슬 같은 중급 사슬이 꼭 필요해요. 레이스형은 다 채우면 채점(틀린 칸 +1분). ✨ 자동 메모 가능',
   king: '6×6 · 교대 추론 사슬(AIC)까지 필요하거나 그걸로도 막혀요. 🏆 대회 룰: 틀려도 바로 안 알려 주고, 다 채우면 한 번에 채점해요. ✨ 자동 메모 가능',
 };
 
-/** 완주 기록 옆 벌점 설명: " · 3:12 + 실수 2 (+1분) + 자동 메모 (+5:40)" */
-const penaltyNote = (e: Entry) =>
-  e.ms != null && (e.mistakes || e.autoMs)
-    ? ` · ${fmt(e.ms)}${e.mistakes ? ` + 실수 ${e.mistakes} (+${penaltyText(e.mistakes * (e.penaltyMs ?? MISTAKE_PENALTY_MS))})` : ''}${e.autoMs ? ` + 자동 메모 (+${fmt(e.autoMs)})` : ''}`
-    : '';
+/** 벌점 내역: " + 실수 2 (+2분) + 힌트 1 (+1분) + 자동 메모 (+5:40)" */
+const penaltyParts = (e: Entry) =>
+  `${e.mistakes ? ` + 실수 ${e.mistakes} (+${penaltyText(e.mistakes * (e.penaltyMs ?? MISTAKE_PENALTY_MS))})` : ''}${e.hints ? ` + 힌트 ${e.hints} (+${penaltyText(e.hints * HINT_PENALTY_MS)})` : ''}${e.autoMs ? ` + 자동 메모 (+${fmt(e.autoMs)})` : ''}`;
+
+/** AI 고르기 카드의 규칙 줄 (일반/아이템전에 따라 채점 방식이 다르다) */
+function botRules(l: Level, items: boolean): string {
+  const mode: Mode = items ? 'item' : 'race';
+  const pen = penaltyText(penaltyFor(l, mode));
+  const rules =
+    l === 'king'
+      ? ['🏆 대회 룰', '틀려도 알려 주지 않아요', `틀리면 소요 시간 +${pen}`]
+      : gradedLater(l, mode)
+        ? ['다 채우면 채점해요', `틀린 칸 하나에 +${pen}`]
+        : [`실수 하나에 +${pen}`];
+  return rules.map((r) => `<li>${r}</li>`).join('');
+}
+
+/** 완주 기록 옆 벌점 설명: " · 3:12 + 실수 2 (+2분) + 자동 메모 (+5:40)" */
+const penaltyNote = (e: Entry) => {
+  const parts = e.ms != null ? penaltyParts(e) : '';
+  return parts ? ` · ${fmt(e.ms!)}${parts}` : '';
+};
 
 /** 규칙대로 정렬해 그린다. 순위가 바뀐 줄은 이전 자리에서 미끄러져 온다 */
 function renderStandings(el: HTMLElement | null, racers: Racer[], claim: boolean, total: number): Racer[] {
@@ -629,7 +652,9 @@ function renderStandings(el: HTMLElement | null, racers: Racer[], claim: boolean
         : e.ms != null
           ? `${e.projected ? '끝까지 풀면 (예상)' : '🏁 완주'}${penaltyNote(e)}`
           : e.gaveUp
-            ? '포기'
+            ? e.eliminated
+              ? `탈락 (채점 ${GRADE_TRIES}번 실패)`
+              : '포기'
             : '';
       const miss = e.mistakes && e.ms == null ? `${sub ? ' · ' : ''}실수 ${e.mistakes}` : '';
       // 판 미리보기가 있으면 아바타 자리에 (테두리가 플레이어 색)
@@ -663,7 +688,7 @@ function resultDialog(h: Pick<Play, 'overlay'>, racers: Racer[], claim: boolean,
   const d = h.overlay(`
     <img class="result-img${myPlace === 1 || me < 0 ? '' : ' dim'}" src="assets/trophy.svg" alt="" />
     <h2>${title}</h2>
-    <p class="hint">${claim ? '점수 순위 (맞힌 칸 − 실수)' : `기록 순위 (완주 시간 + 실수당 ${penaltyText(racers[0]?.penaltyMs ?? MISTAKE_PENALTY_MS)}${racers.some((e) => e.autoMs) ? ' + 자동 메모' : ''})`}</p>
+    <p class="hint">${claim ? '점수 순위 (맞힌 칸 − 실수)' : `기록 순위 (완주 시간 + 실수당 ${penaltyText(racers.find((e) => e.me)?.penaltyMs ?? racers[0]?.penaltyMs ?? MISTAKE_PENALTY_MS)}${racers.some((e) => e.hints) ? ` + 힌트당 ${penaltyText(HINT_PENALTY_MS)}` : ''}${racers.some((e) => e.autoMs) ? ' + 자동 메모' : ''})`}</p>
     <div class="standings final" id="final"></div>
     <div class="row">${buttons}</div>`);
   renderStandings(d.querySelector('#final'), racers, claim, total);
@@ -694,13 +719,11 @@ function singleSetup(): void {
     <div class="bots">
       ${LEVEL_KEYS.map((l) => {
         const p = AI_PROFILES[l];
-        const pen = penaltyText(penaltyFor(l));
-        const rules = l === 'king' ? ['🏆 대회 룰', '틀려도 알려 주지 않아요', `틀리면 소요 시간 +${pen}`] : [`실수 하나에 +${pen}`];
         return `<button class="bot ${l}" data-level="${l}">
           <img src="${p.avatar}" alt="" data-bot="${l}" />
           <span class="chip">${LEVELS[l].label}</span>
           <b>${p.name}</b><small>${p.blurb}</small>
-          <ul class="bot-rules">${rules.map((r) => `<li>${r}</li>`).join('')}</ul>
+          <ul class="bot-rules">${botRules(l, items)}</ul>
         </button>`;
       }).join('')}
     </div>
@@ -711,6 +734,7 @@ function singleSetup(): void {
     app.querySelectorAll<HTMLButtonElement>('.bot[data-level]').forEach((b) => b.classList.toggle('hidden', !levelsFor(size).includes(b.dataset.level as Level)));
     $('#mode-desc')!.textContent = items ? RULES.item.desc.replace('나 빼고 전원에게', 'AI 에게') + ' AI 도 콤보가 차면 뱉어요!' : '';
     $('#mode-desc')!.hidden = !items;
+    app.querySelectorAll<HTMLElement>('.bot[data-level] .bot-rules').forEach((u) => (u.innerHTML = botRules(u.parentElement!.dataset.level as Level, items)));
   };
   app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(
     (b) =>
@@ -754,7 +778,10 @@ function startSingle(level: Level, items: boolean, size: Size): void {
   const ai = new AiSolver(puzzle, solution, prof);
   const total = ai.total;
   const me: PlayerInfo = { id: 0, name: myName };
-  const penaltyMs = penaltyFor(level);
+  const mode: Mode = items ? 'item' : 'race';
+  const penaltyMs = penaltyFor(level, mode);
+  // 다 채우고 채점하는 판에선 AI 가 넣었다 바로 고친 숫자는 채점 전에 고친 셈이라 실수가 아니다
+  const aiMisses = () => (gradedLater(level, mode) ? 0 : ai.mistakes);
   const meR: Racer = { id: 0, name: myName, color: colorOf(0), avatar: avatar(me), me: true, filled: 0, ms: null, mistakes: 0, penaltyMs };
   const aiR: Racer = { id: 1, name: prof.name, color: '#8a93a6', avatar: faceHtml(level, 'avatar pic'), me: false, filled: 0, ms: null, mistakes: 0, penaltyMs };
   const meter = items ? new ComboMeter() : undefined;
@@ -773,10 +800,11 @@ function startSingle(level: Level, items: boolean, size: Size): void {
       <div class="standings" id="stand"></div>
       <p class="hint mini-title">${prof.name} 의 판</p>
       <div class="mini${size === 6 ? ' six' : ''}" id="ai-mini">${puzzle.map((v) => `<i class="${v ? 'g' : ''}"></i>`).join('')}</div>`,
-    onProgress(f, m, a) {
+    onProgress(f, m, a, hn) {
       meR.filled = f;
       meR.mistakes = m;
       meR.autoMs = a;
+      meR.hints = hn;
       refresh();
     },
     onSolved(ms) {
@@ -790,7 +818,7 @@ function startSingle(level: Level, items: boolean, size: Size): void {
       ai.update(dt);
       if (ai.filled === filled && ai.mistakes === mistakes) return;
       aiR.filled = ai.filled;
-      aiR.mistakes = ai.mistakes;
+      aiR.mistakes = aiMisses();
       const mini = $('#ai-mini')!.children;
       ai.grid.forEach((v, i) => {
         if (!puzzle[i]) mini[i].className = i === ai.wrongCell ? 'x' : v ? 'f' : '';
@@ -812,8 +840,9 @@ function startSingle(level: Level, items: boolean, size: Size): void {
       }
       refresh();
     },
-    onGiveUp() {
+    onGiveUp(eliminated) {
       meR.gaveUp = true;
+      meR.eliminated = eliminated;
       h.end();
       finish();
     },
@@ -856,7 +885,7 @@ function startSingle(level: Level, items: boolean, size: Size): void {
       }
       aiR.ms = t * 1000;
       aiR.filled = ai.filled;
-      aiR.mistakes = ai.mistakes;
+      aiR.mistakes = aiMisses();
       aiR.projected = true;
     }
     h.banner('');
@@ -898,7 +927,7 @@ interface Room {
   phase: 'lobby' | 'play';
   total: number;
   /** 레이스형 진행률·완주 시간·포기 */
-  progress: Map<number, { filled: number; mistakes: number; auto?: number; cells?: string }>;
+  progress: Map<number, { filled: number; mistakes: number; auto?: number; hints?: number; cells?: string }>;
   finishes: Map<number, number>;
   gaveUp: Set<number>;
   /** 점령형 오답 수 */
@@ -1087,7 +1116,7 @@ function createRoom(): void {
       case 'progress': {
         if (r.phase !== 'play' || !isRace(r.rule)) return;
         const cells = typeof m.cells === 'string' && m.cells.length === r.puzzle.length && /^[g01]+$/.test(m.cells) ? m.cells : undefined;
-        const out: Msg = { t: 'progress', id: from, filled: Number(m.filled) | 0, mistakes: Number(m.mistakes) | 0, auto: Math.max(0, Number(m.auto) | 0), cells };
+        const out: Msg = { t: 'progress', id: from, filled: Number(m.filled) | 0, mistakes: Number(m.mistakes) | 0, auto: Math.max(0, Number(m.auto) | 0), hints: Math.min(9, Math.max(0, Number(m.hints) | 0)), cells };
         n.broadcast(out);
         applyProgress(out);
         return;
@@ -1209,6 +1238,7 @@ function currentRows(): ResultRow[] {
     gaveUp: r.gaveUp.has(p.id) || undefined,
     mistakes: claim ? (r.misses.get(p.id) ?? 0) : (r.progress.get(p.id)?.mistakes ?? 0),
     autoMs: claim ? undefined : r.progress.get(p.id)?.auto || undefined,
+    hints: claim ? undefined : r.progress.get(p.id)?.hints || undefined,
   }));
 }
 
@@ -1375,8 +1405,9 @@ function racers(): Racer[] {
     score: claim ? (r.scores.get(p.id) ?? 0) : undefined,
     gaveUp: r.gaveUp.has(p.id),
     mistakes: claim ? (r.misses.get(p.id) ?? 0) : (r.progress.get(p.id)?.mistakes ?? 0),
-    penaltyMs: penaltyFor(r.level),
+    penaltyMs: penaltyFor(r.level, r.rule),
     autoMs: claim ? undefined : r.progress.get(p.id)?.auto,
+    hints: claim ? undefined : r.progress.get(p.id)?.hints,
     cells: claim ? undefined : r.progress.get(p.id)?.cells,
   }));
 }
@@ -1427,9 +1458,9 @@ function refreshPlayers(): void {
   }
 }
 
-function applyProgress(m: { id: number; filled: number; mistakes: number; auto?: number; cells?: string }): void {
+function applyProgress(m: { id: number; filled: number; mistakes: number; auto?: number; hints?: number; cells?: string }): void {
   if (!room || room.phase !== 'play') return;
-  room.progress.set(m.id, { filled: m.filled, mistakes: m.mistakes, auto: m.auto, cells: m.cells ?? room.progress.get(m.id)?.cells });
+  room.progress.set(m.id, { filled: m.filled, mistakes: m.mistakes, auto: m.auto, hints: m.hints, cells: m.cells ?? room.progress.get(m.id)?.cells });
   refreshPlayers();
 }
 
@@ -1471,8 +1502,10 @@ function applyFinished(m: { id: number; ms: number }): void {
   if (!r || r.phase !== 'play') return;
   r.finishes.set(m.id, m.ms);
   // 실수 벌점이 붙어 완주 순서와 순위가 다를 수 있으니, 기록(시간+벌점)으로 말한다
-  const e: Entry = { id: m.id, filled: 0, ms: m.ms, mistakes: r.progress.get(m.id)?.mistakes ?? 0, penaltyMs: penaltyFor(r.level), autoMs: r.progress.get(m.id)?.auto };
-  const rec = `${fmt(finalMs(e)!)}${e.mistakes ? ` (실수 +${penaltyText(e.mistakes * e.penaltyMs!)})` : ''}${e.autoMs ? ` (자동 메모 +${fmt(e.autoMs)})` : ''}`;
+  const pr = r.progress.get(m.id);
+  const e: Entry = { id: m.id, filled: 0, ms: m.ms, mistakes: pr?.mistakes ?? 0, penaltyMs: penaltyFor(r.level, r.rule), autoMs: pr?.auto, hints: pr?.hints };
+  const parts = penaltyParts(e);
+  const rec = `${fmt(finalMs(e)!)}${parts ? ` (${fmt(e.ms!)}${parts})` : ''}`;
   addChat(`🏁 ${nameOf(m.id)} 님 완주! 기록 ${rec}`);
   if (m.id === r.myId) {
     if (r.finishes.size === 1) fx.confetti(70);
@@ -1575,11 +1608,11 @@ function startMulti(puzzleStr: string, level: Level, rule: Rule, hints: number):
       ? `<h3>실시간 점수</h3><div class="standings" id="stand"></div><p class="hint"><span id="left"></span> · 맞히면 +1, 틀리면 -1 · 2초 정지</p>`
       : `<h3>실시간 순위</h3><div class="standings" id="stand"></div><p class="hint">${meter ? `⚡ 5초 안에 ${ATTACK_COMBO}연속 정답 → 나 빼고 전원에게 침 퉤!` : '완주한 순서대로 시간이 기록돼요. 모두 끝나면 순위 발표!'}</p>${r.host ? '<button class="ghost hidden" id="end-now">지금 종료하고 순위 발표</button>' : ''}`,
     meter,
-    onProgress(filled, mistakes, auto) {
+    onProgress(filled, mistakes, auto, hints) {
       if (claim) return;
       const b = r.play!.board;
       const cells = b.grid.map((_, i) => (b.given[i] ? 'g' : b.done(i) ? '1' : '0')).join('');
-      const m: Msg = { t: 'progress', id: r.myId, filled, mistakes, auto, cells };
+      const m: Msg = { t: 'progress', id: r.myId, filled, mistakes, auto, hints, cells };
       if (r.host) net?.broadcast(m);
       else net?.send(m);
       applyProgress(m);
@@ -1769,7 +1802,7 @@ function applyRows(rows: ResultRow[]): void {
       r.cells.set(row.id, row.filled);
       r.misses.set(row.id, row.mistakes ?? 0);
     } else {
-      r.progress.set(row.id, { filled: row.filled, mistakes: row.mistakes ?? 0, auto: row.autoMs, cells: r.progress.get(row.id)?.cells });
+      r.progress.set(row.id, { filled: row.filled, mistakes: row.mistakes ?? 0, auto: row.autoMs, hints: row.hints, cells: r.progress.get(row.id)?.cells });
       if (row.ms != null) r.finishes.set(row.id, row.ms);
       if (row.gaveUp) r.gaveUp.add(row.id);
     }

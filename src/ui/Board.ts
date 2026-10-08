@@ -1,4 +1,4 @@
-import { autoNotePenaltyMs } from '../game/Ranking';
+import { autoNotePenaltyMs, GRADE_TRIES, HINT_PENALTY_MS } from '../game/Ranking';
 import { bitCount, candidates, geo, HINTS, pruneNotes, type Geo, type Grid } from '../game/Sudoku';
 
 /**
@@ -22,11 +22,15 @@ export class Board {
   mistakes = 0;
   /** 자동 메모 벌점(ms) 합 — 되돌리기로 메모를 되돌려도 돌려주지 않는다 (훔쳐보고 되돌리기 방지) */
   autoMs = 0;
+  /** 쓴 힌트 수 (점령형은 시간 기록이 아니라 세지 않는다) */
+  hintsUsed = 0;
+  /** 채점 숨김: 틀린 채로 채점된 횟수 — GRADE_TRIES 번이면 탈락 */
+  checkFails = 0;
   locked = true;
   hintsLeft = HINTS;
   private frozenUntil = 0;
 
-  onChange: ((filled: number, mistakes: number, autoMs: number) => void) | null = null;
+  onChange: ((filled: number, mistakes: number, autoMs: number, hints: number) => void) | null = null;
   onSolved: (() => void) | null = null;
   /** 개인판: 맞힌 순간 (units = 이번에 완성된 행·열·박스) */
   onCorrect: ((i: number, hint: boolean, units: number[][]) => void) | null = null;
@@ -40,8 +44,10 @@ export class Board {
   onExplain: (() => void) | null = null;
   /** 채점 숨김: 숫자를 넣을 때마다 (맞았는지와 상관없이 — 이펙트용) */
   onPut: ((i: number) => void) | null = null;
-  /** 채점 숨김: 판을 다 채워 채점했는데 틀린 칸이 있을 때 (틀린 칸 수) */
-  onChecked: ((wrong: number) => void) | null = null;
+  /** 채점 숨김: 판을 다 채워 채점했는데 틀린 칸이 있을 때 (틀린 칸 수, 남은 채점 기회) */
+  onChecked: ((wrong: number, triesLeft: number) => void) | null = null;
+  /** 채점 숨김: 틀린 채로 GRADE_TRIES 번 채점돼 탈락 */
+  onEliminated: (() => void) | null = null;
   /** 채점 숨김에서 맞다고 드러난 칸 (채점·힌트·풀이로) — 더는 못 고친다 */
   private readonly confirmed = new Set<number>();
   /** 채점 숨김에서 채점 결과 틀린 칸 (고치기 전까지 빨갛게) */
@@ -121,7 +127,7 @@ export class Board {
       `<button class="tool" data-k="note">✎ 메모 <kbd>N</kbd></button>` +
       `<button class="tool" data-k="undo">↶ 되돌리기 <kbd>Z</kbd></button>` +
       (shared ? '' : `<button class="tool" data-k="erase">⌫ 지우기</button>`) +
-      `<button class="tool hint" data-k="hint">💡 힌트 <b></b> <kbd>H</kbd></button>` +
+      `<button class="tool hint" data-k="hint">💡 힌트 <b></b> <kbd>H</kbd>${shared ? '' : `<small class="cost">+${HINT_PENALTY_MS / 60_000}:00</small>`}</button>` +
       (autoNotes ? `<button class="tool auto" data-k="auto">✨ 자동 메모 <kbd>A</kbd>${shared ? '' : '<small class="cost"></small>'}</button>` : '') +
       (explain ? `<button class="tool explain-btn" data-k="explain">🧠 풀이 <kbd>E</kbd></button>` : '');
     padEl.appendChild(tools);
@@ -217,7 +223,7 @@ export class Board {
       this.onWrong?.(i);
     }
     this.render();
-    this.onChange?.(this.filled, this.mistakes, this.autoMs);
+    this.changed();
   }
 
   /** 채점 숨김: 숫자를 넣기만 한다 (맞았는지 모름). 다 채우면 채점 */
@@ -231,7 +237,7 @@ export class Board {
     if (v) this.onPut?.(i);
     this.onInput?.('select');
     this.render();
-    this.onChange?.(this.filled, this.mistakes, this.autoMs);
+    this.changed();
     if (this.grid.every(Boolean)) this.check();
   }
 
@@ -250,10 +256,18 @@ export class Board {
     this.mistakes += fresh.length;
     for (const i of wrong) this.shownWrong.add(i);
     if (!fresh.length) return void this.render();
+    this.checkFails++;
+    const out = this.checkFails >= GRADE_TRIES;
+    if (out) this.locked = true;
     this.render();
-    this.onChecked?.(fresh.length);
+    this.onChecked?.(fresh.length, GRADE_TRIES - this.checkFails);
     this.onWrong?.(wrong[0]);
-    this.onChange?.(this.filled, this.mistakes, this.autoMs);
+    this.changed();
+    if (out) this.onEliminated?.();
+  }
+
+  private changed(): void {
+    this.onChange?.(this.filled, this.mistakes, this.autoMs, this.hintsUsed);
   }
 
   /** 관전자용 판 상태: grid 칸 수만큼 글자(0 = 빈칸), notes 칸마다 36진수 2 글자, sel 고른 칸 */
@@ -280,6 +294,7 @@ export class Board {
     }
     if (i < 0) return;
     this.hintsLeft--;
+    if (!this.shared) this.hintsUsed++;
     // 채점 숨김: 틀린 숫자 위에 힌트가 정답을 쓰면 틀렸다는 걸 알려 준 셈 — 조용히 바뀌지 않게 실수로 센다
     if (this.blind && this.grid[i] && this.grid[i] !== this.solution[i] && !this.shownWrong.has(i)) {
       this.mistakes++;
@@ -305,7 +320,7 @@ export class Board {
     this.notes.splice(0, next.length, ...next);
     this.onInput?.('auto');
     this.render();
-    this.onChange?.(this.filled, this.mistakes, this.autoMs);
+    this.changed();
   }
 
   /** 자동 메모를 누르면 될 메모 — 빈칸은 후보 전부, 나머지는 그대로 */
@@ -343,7 +358,7 @@ export class Board {
     if (this.grid.join() + this.notes.join() === before) return void this.onInput?.('blocked');
     this.onInput?.('note');
     this.render();
-    this.onChange?.(this.filled, this.mistakes, this.autoMs);
+    this.changed();
   }
 
   /** 정답과 다른 숫자가 들어 있는 칸 (풀이 전 정리용) */
@@ -364,14 +379,14 @@ export class Board {
     this.mistakes += this.unseenWrong;
     for (const i of this.wrongCells()) this.shownWrong.add(i);
     this.render();
-    this.onChange?.(this.filled, this.mistakes, this.autoMs);
+    this.changed();
   }
 
   /** 주어진 칸들을 비운다 (되돌리기로 살릴 수 없게 기록에서도 지운다) */
   wipe(cells: number[]): void {
     for (const g of [this.grid, ...this.history.map((h) => h.grid)]) for (const i of cells) if (!this.given[i]) g[i] = 0;
     this.render();
-    this.onChange?.(this.filled, this.mistakes, this.autoMs);
+    this.changed();
   }
 
   /** 맞게 채운 숫자만 남긴 판 (풀이·힌트 계산용) */
@@ -405,7 +420,7 @@ export class Board {
     const units = this.blind ? [] : this.unitsOf(i).filter((u) => u.every((k) => this.done(k)));
     this.render();
     this.onCorrect?.(i, hint, units);
-    this.onChange?.(this.filled, this.mistakes, this.autoMs);
+    this.changed();
     if (this.solved) {
       this.locked = true;
       this.onSolved?.();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTO_MARK_MS, AUTO_SCAN_MS, AUTO_VERIFY, autoNotePenaltyMs, finalMs, MISTAKE_PENALTY_MS, places, rankRace, rankScore, type Entry } from './Ranking';
+import { AUTO_MARK_MS, AUTO_SCAN_MS, AUTO_VERIFY, autoNotePenaltyMs, finalMs, GRADED_PENALTY_MS, gradedLater, HINT_PENALTY_MS, KING_PENALTY_MS, MISTAKE_PENALTY_MS, penaltyFor, places, rankRace, rankScore, type Entry } from './Ranking';
 
 describe('Ranking', () => {
   it('레이스: 완주자는 시간순, 미완주는 뒤에서 진행 많은 순', () => {
@@ -85,5 +85,22 @@ describe('Ranking', () => {
       { id: 2, filled: 0, ms: 120_000 },
     ];
     expect(rankRace(es).map((e) => e.id)).toEqual([2, 1]);
+  });
+
+  it('고급·지옥 레이스는 다 채우고 채점, 점령형·아이템전은 바로 채점 (변성대왕은 아이템전도 숨김)', () => {
+    expect(gradedLater('medium')).toBe(false);
+    expect(gradedLater('hard')).toBe(true);
+    expect(gradedLater('hell', 'item')).toBe(false);
+    expect(gradedLater('hell', 'claim')).toBe(false);
+    expect(gradedLater('king', 'item')).toBe(true);
+    expect(gradedLater('king', 'claim')).toBe(false);
+    expect(penaltyFor('easy')).toBe(MISTAKE_PENALTY_MS);
+    expect(penaltyFor('hell')).toBe(GRADED_PENALTY_MS);
+    expect(penaltyFor('hell', 'item')).toBe(MISTAKE_PENALTY_MS);
+    expect(penaltyFor('king', 'item')).toBe(KING_PENALTY_MS);
+  });
+
+  it('힌트는 하나에 HINT_PENALTY_MS', () => {
+    expect(finalMs({ id: 1, filled: 0, ms: 100_000, hints: 2 })).toBe(100_000 + 2 * HINT_PENALTY_MS);
   });
 });

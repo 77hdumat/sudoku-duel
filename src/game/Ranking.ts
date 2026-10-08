@@ -13,21 +13,42 @@ export interface Entry {
   penaltyMs?: number;
   /** 자동 메모로 아낀 시간만큼 더해지는 벌점(ms) 합 */
   autoMs?: number;
+  /** 쓴 힌트 수 — 하나에 HINT_PENALTY_MS */
+  hints?: number;
 }
 
 const fewer = (a: Entry, b: Entry) => (a.mistakes ?? 0) - (b.mistakes ?? 0);
 
-/** 레이스 계열: 실수 하나에 더해지는 시간 */
-export const MISTAKE_PENALTY_MS = 30_000;
-/** 변성대왕: 추론 없이 찍는 사람이 많아서 실수 하나에 7분 */
-export const KING_PENALTY_MS = 7 * 60_000;
+/** 개인판 규칙: 레이스형(싱글 포함) · 아이템전 · 점령형 */
+export type Mode = 'race' | 'item' | 'claim';
 
-export const penaltyFor = (level: string): number => (level === 'king' ? KING_PENALTY_MS : MISTAKE_PENALTY_MS);
+/** 바로 채점하는 판(초급·중급, 아이템전): 실수 하나에 — 손이 미끄러진 것까지 무겁게 물지 않게 가볍게 */
+export const MISTAKE_PENALTY_MS = 10_000;
+/** 다 채우고 채점하는 판(고급·지옥): 채점에서 틀린 칸 하나에 */
+export const GRADED_PENALTY_MS = 60_000;
+/** 변성대왕: 추론 없이 찍는 사람이 많아서 틀린 칸 하나에 7분 */
+export const KING_PENALTY_MS = 7 * 60_000;
+/** 힌트 하나에 */
+export const HINT_PENALTY_MS = 60_000;
+/** 다 채우고 채점하는 판: 틀린 채로 이만큼 채점되면 탈락 (막 찍는 사람 거르기) */
+export const GRADE_TRIES = 5;
+
+/**
+ * 맞았는지 바로 알려 주지 않고 다 채운 뒤 채점하는지. 바로 알려 주면 두 후보 중 하나를 넣어 보는 '찍고 확인' 이 되니
+ * 고급부터는 숨긴다 — 대신 채점 전엔 몇 번을 고쳐도 벌점이 없다. 점령형(먼저 맞힌 사람이 가져감)·아이템전(연속 정답 콤보)은
+ * 바로 채점해야 규칙이 돌아서 예외 (변성대왕은 아이템전에서도 숨긴다)
+ */
+export const gradedLater = (level: string, mode: Mode = 'race'): boolean =>
+  level === 'king' ? mode !== 'claim' : (level === 'hard' || level === 'hell') && mode === 'race';
+
+export const penaltyFor = (level: string, mode: Mode = 'race'): number =>
+  level === 'king' ? KING_PENALTY_MS : gradedLater(level, mode) ? GRADED_PENALTY_MS : MISTAKE_PENALTY_MS;
 /** '30초' · '7분' */
 export const penaltyText = (ms: number): string => (ms >= 60_000 && ms % 60_000 === 0 ? `${ms / 60_000}분` : `${Math.round(ms / 1000)}초`);
 
-/** 최종 기록 = 완주 시간 + 실수 벌점 + 자동 메모 벌점 (못 끝냈으면 null) */
-export const finalMs = (e: Entry): number | null => (e.ms == null ? null : e.ms + (e.mistakes ?? 0) * (e.penaltyMs ?? MISTAKE_PENALTY_MS) + (e.autoMs ?? 0));
+/** 최종 기록 = 완주 시간 + 실수 벌점 + 힌트 벌점 + 자동 메모 벌점 (못 끝냈으면 null) */
+export const finalMs = (e: Entry): number | null =>
+  e.ms == null ? null : e.ms + (e.mistakes ?? 0) * (e.penaltyMs ?? MISTAKE_PENALTY_MS) + (e.hints ?? 0) * HINT_PENALTY_MS + (e.autoMs ?? 0);
 
 /** 자동 메모 벌점: 사람이 손으로 채웠다면 걸렸을 시간 — 빈칸 하나 훑기 + 후보 하나 적기, 여기에 검증 시간 */
 export const AUTO_SCAN_MS = 3000;
