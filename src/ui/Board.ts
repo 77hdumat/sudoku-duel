@@ -338,18 +338,12 @@ export class Board {
   }
 
   /**
-   * 풀이 전 정리: 틀린 칸을 비운다 (되돌리기 가능). 채점 숨김에선 틀렸다는 걸 알려 준 셈이라 그만큼 실수로 센다
+   * 풀이 전: 틀린 칸을 빨갛게 드러낸다 (숫자는 그대로 둔다). 채점 숨김에선 틀렸다는 걸 알려 준 셈이라 그만큼 실수로 센다
    * (채점 숨김이 아니면 넣을 때 이미 실수로 셌다)
    */
-  clearWrong(): void {
-    const wrong = this.wrongCells();
-    if (!wrong.length) return;
+  revealWrong(): void {
     this.mistakes += this.unseenWrong;
-    this.save();
-    for (const i of wrong) {
-      this.grid[i] = 0;
-      this.shownWrong.delete(i);
-    }
+    for (const i of this.wrongCells()) this.shownWrong.add(i);
     this.render();
     this.onChange?.(this.filled, this.mistakes);
   }

@@ -468,17 +468,17 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
       sfx.hint();
       const known = board.known();
       const steps = explainNext(known, ruledOut);
-      // 판에 틀린 숫자가 있으면 풀이가 기준으로 삼는 판(맞는 숫자만)과 화면이 어긋난다 → 먼저 보여 주고 비운다
+      // 판에 틀린 숫자가 있으면 풀이가 기준으로 삼는 판(맞는 숫자만)과 화면이 어긋난다 → 먼저 빨갛게 보여 준다 (숫자는 그대로 둔다)
       const wrong = board.wrongCells();
-      if (wrong.length)
+      if (board.unseenWrong)
         steps.unshift({
           id: 'fix',
           phases: [
             {
-              text: `판에 틀린 숫자가 ${wrong.length}개 있어요 (빨간 칸). 틀린 숫자가 있으면 그다음 추리가 전부 꼬여서 끝까지 풀 수 없어요.`,
+              text: `판에 틀린 숫자가 ${wrong.length}개 있어요 (빨간 칸). 틀린 숫자를 믿고 가면 그다음 추리가 전부 꼬여서 끝까지 풀 수 없어요.`,
               draw: { bad: wrong },
             },
-            { text: `먼저 이 칸들을 비우고 시작할게요.${board.unseenWrong ? ` (틀린 칸을 알려 준 셈이라 실수 +${board.unseenWrong})` : ''}` },
+            { text: `이 칸들은 빨갛게 표시해 두고, 맞는 숫자만 보고 풀이할게요. (틀린 칸을 알려 준 셈이라 실수 +${board.unseenWrong})` },
           ],
           elim: [],
           cands: known.map((v, i) => (v ? 0 : candidates(known, i) & ~ruledOut[i])),
@@ -489,7 +489,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
         steps,
         Math.sqrt(puzzle.length),
         (st) => {
-          if (st.id === 'fix') return board.clearWrong();
+          if (st.id === 'fix') return board.revealWrong();
           for (const e of st.elim) ruledOut[e.i] |= 1 << (e.d - 1);
           board.applyExplain(st.elim, st.place);
         },
