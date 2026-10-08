@@ -793,19 +793,11 @@ input:focus {
   border-radius: 4px;
   font-weight: 800;
 }
+/* 변성대왕: 판 테두리가 숨 쉬고 뒤에서 해골이 움직여 backdrop-filter 흐림이 매 프레임 다시 그려지며 깜빡인다 — 흐림 없이 진하게 덮는다 */
 .countdown.king {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
   color: #ff3b3b;
-  background: rgba(14, 2, 4, 0.72);
-}
-.countdown .cd-face {
-  width: min(45%, 210px);
-  aspect-ratio: 1;
-  filter: drop-shadow(0 0 22px rgba(229, 48, 63, 0.8));
+  backdrop-filter: none;
+  background: rgba(14, 2, 4, 0.9);
 }
 .countdown b {
   display: inline-block;

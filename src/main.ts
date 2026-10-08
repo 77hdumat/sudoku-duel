@@ -392,7 +392,7 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
       </div>
       ${o.level === 'hell' && !o.shared && store.get('noGuess.hell', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 지옥: 찍지 말고 추론으로 풀어 주세요.<br />실수 하나에 +30초!<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
       ${o.level === 'king' && store.get('noGuess.king', '') !== 'off' ? '<p class="no-guess" role="alert">⚠️ 추측하지 마세요. 틀려도 바로 알려 주지 않아요.<br />다 채우면 채점하고, 틀린 칸 하나에 +7분이에요.<button class="no-guess-x" aria-label="경고 끄기">✕</button></p>' : ''}
-      <div class="board-wrap"><div class="board" id="board"></div><div class="countdown${o.level === 'king' ? ' king' : ''}" id="cd">${o.level === 'king' ? faceHtml('king', 'cd-face', 'smirk') : ''}<b>3</b></div><div class="banner" id="banner"></div></div>
+      <div class="board-wrap"><div class="board" id="board"></div><div class="countdown${o.level === 'king' ? ' king' : ''}" id="cd"><b>3</b></div><div class="banner" id="banner"></div></div>
       <div class="pad" id="pad"></div>
     </main>
     ${o.chat ? '<aside class="chat-slot" id="chat-slot"></aside>' : ''}
@@ -490,19 +490,16 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
   if (giveBtn && o.onGiveUp) giveBtn.onclick = () => started && !h.ended && o.onGiveUp!();
 
   const cd = $('#cd')!;
-  // 변성대왕: 3 에서 씨익 웃다가 2 부터 표정을 지우고 시뻘건 눈으로 노려본다
-  const cdFace = cd.querySelector<HTMLElement>('.cd-face');
   const cdNum = (txt: string) => (cd.querySelector('b')!.outerHTML = `<b>${txt}</b>`);
   let n = 3;
   sfx.countdown();
-  // 카운트다운 내내 뒤의 해골들이 킬킬댄다
-  if (cdFace) fx.cackle(3000);
+  // 변성대왕: 카운트다운 내내 뒤의 해골들이 킬킬댄다
+  if (o.level === 'king') fx.cackle(3000);
   const cdT = setInterval(() => {
     n--;
     if (n > 0) {
       sfx.countdown();
       cdNum(String(n));
-      if (cdFace) cdFace.dataset.mood = 'glare';
       return;
     }
     clearInterval(cdT);
