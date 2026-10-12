@@ -1267,6 +1267,8 @@ function joinRoom(code: string, watch = false): void {
         n.send({ t: 'hello', name: myName, watch });
         return;
       case 'full':
+        // 초대 링크·참가로 들어왔는데 이미 게임 중이면 코드를 다시 치게 하지 말고 바로 관전으로
+        if (m.why === 'playing' && !watch) return joinRoom(code, true);
         return menu(
           m.why === 'playing'
             ? '이미 게임이 진행 중인 방이에요. 관전으로는 들어갈 수 있어요.'

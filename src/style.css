@@ -2666,3 +2666,17 @@ body:has(.play.king) {
     animation: none;
   }
 }
+
+/* 폰: 움직이는 3D 캔버스 위 흐림은 매 프레임 다시 계산돼 발열이 크다 — 흐림 대신 조금 더 진하게 덮는다 */
+@media (pointer: coarse) {
+  .countdown,
+  .overlay {
+    backdrop-filter: none;
+  }
+  .countdown {
+    background: color-mix(in srgb, var(--panel) 85%, transparent);
+  }
+  .overlay {
+    background: rgba(0, 0, 0, 0.5);
+  }
+}

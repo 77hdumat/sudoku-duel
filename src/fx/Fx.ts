@@ -19,6 +19,8 @@ const PALETTES: Record<string, number[]> = {
 export const reduceMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** 폰·태블릿(터치 위주·좁은 화면)은 배경 오브젝트를 줄여 배터리·발열을 아낀다 */
 export const light = typeof matchMedia !== 'undefined' && (matchMedia('(pointer: coarse)').matches || innerWidth < 700);
+/** 폰은 120Hz 화면이어도 3D 는 30fps 로만 다시 그린다 — 매 프레임 그리면 GPU 가 쉬지 못해 금방 뜨거워진다 */
+export const FRAME_MS = light ? 1000 / 30 : 0;
 
 interface Particle {
   x: number;
@@ -191,8 +193,8 @@ export class Fx {
 
   constructor() {
     try {
-      this.bgR = this.mkRenderer('fx-bg', light ? 1.5 : 2);
-      this.fxR = this.mkRenderer('fx-top', 2);
+      this.bgR = this.mkRenderer('fx-bg', light ? 1 : 2);
+      this.fxR = this.mkRenderer('fx-top', light ? 1.5 : 2);
     } catch {
       return;
     }
@@ -226,7 +228,7 @@ export class Fx {
   }
 
   private mkRenderer(id: string, maxRatio: number): THREE.WebGLRenderer {
-    const r = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    const r = new THREE.WebGLRenderer({ alpha: true, antialias: !light, powerPreference: light ? 'low-power' : 'default' });
     r.setPixelRatio(Math.min(devicePixelRatio, maxRatio));
     r.setClearColor(0x000000, 0);
     r.domElement.id = id;
@@ -407,6 +409,8 @@ export class Fx {
 
   private loop = (now: number) => {
     requestAnimationFrame(this.loop);
+    // 반 프레임 여유: 60Hz 화면에서 33ms 와 32.9ms 차이로 한 번 더 건너뛰지 않게
+    if (now - this.last < FRAME_MS - 8) return;
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     const t = now / 1000;

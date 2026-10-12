@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { Fire } from './Fire';
+import { FRAME_MS } from './Fx';
 
 /**
  * AI 봇 3D 얼굴 (외부 모델 없이 three.js 기본 도형으로): 머리·눈·눈썹·입·소품을 따로 만들어
@@ -583,6 +584,7 @@ function getStage() {
     const loop = () => {
       requestAnimationFrame(loop);
       const now = performance.now();
+      if (now - last < FRAME_MS - 8) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       drawAll(dt);
