@@ -3,7 +3,7 @@ import { AI_PROFILES, AiSolver } from './game/Ai';
 import { ClaimJudge, type ClaimEvent } from './game/Claim';
 import { ATTACK_COMBO, ComboMeter, SPIT_MS, SPIT_REACTIONS, spitTargets, spitUntil } from './game/Combo';
 import { finalMs, GRADE_TRIES, gradedLater, HINT_PENALTY_MS, MISTAKE_PENALTY_MS, penaltyFor, penaltyText, places, rankRace, rankScore, type Entry, type Mode } from './game/Ranking';
-import { explainNext } from './game/Grade';
+import { explainNext, type Step } from './game/Grade';
 import { autoNotesFor, candidates, fromStr, generate, geo, HINTS, LEVELS, levelsFor, SIZES, solve, toStr, type Grid, type Level, type Size } from './game/Sudoku';
 import { faceHtml } from './fx/Faces';
 import { Fx } from './fx/Fx';
@@ -13,6 +13,24 @@ import { Net, type NetError } from './net/Net';
 import { CHAT_MAX, cleanText, FREEZE_MS, HINT_OPTIONS, isRace, MAX_PLAYERS, MAX_WATCHERS, NAME_MAX, RULES, type Msg, type PlayerInfo, type ResultRow, type Rule } from './net/Protocol';
 import { Board } from './ui/Board';
 import { showExplain } from './ui/Explain';
+
+let explainer: Worker | null | undefined;
+/** 풀이 계산을 워커에서 (극악 판은 몇 초 걸린다). 워커를 못 띄우는 환경이면 그 자리에서 */
+function explainAsync(known: Grid, ruledOut: number[]): Promise<Step[]> {
+  if (explainer === undefined)
+    try {
+      explainer = new Worker(new URL('./game/explain.worker.ts', import.meta.url), { type: 'module' });
+    } catch {
+      explainer = null;
+    }
+  const w = explainer;
+  if (!w) return Promise.resolve(explainNext(known, ruledOut));
+  return new Promise((done) => {
+    w.onmessage = (e: MessageEvent<Step[]>) => done(e.data);
+    w.onerror = () => done(explainNext(known, ruledOut));
+    w.postMessage({ known, ruledOut });
+  });
+}
 
 const app = document.getElementById('app')!;
 const LEVEL_KEYS = Object.keys(LEVELS) as Level[];
@@ -471,13 +489,16 @@ function play(puzzle: Grid, solution: Grid, o: PlayOpts): Play {
     // 풀이로 지운 후보는 이어서 쓴다 (다음 풀이가 같은 단계를 되풀이하지 않게)
     const ruledOut = new Array(puzzle.length).fill(0);
     let open = false;
-    board.onExplain = () => {
+    board.onExplain = async () => {
       if (open) return;
       open = true;
       board.locked = true;
       sfx.hint();
       const known = board.known();
-      const steps = explainNext(known, ruledOut);
+      h.banner('풀이를 생각하는 중…');
+      const steps = await explainAsync(known, ruledOut);
+      h.banner('');
+      if (h.ended) return;
       // 판에 틀린 숫자가 있으면 풀이가 기준으로 삼는 판(맞는 숫자만)과 화면이 어긋난다 → 먼저 빨갛게 보여 준다 (숫자는 그대로 둔다)
       const wrong = board.wrongCells();
       if (board.unseenWrong)

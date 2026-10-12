@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { explainNext, grade, J, logicSolve } from './Grade';
 import { TECHS } from './Techniques';
-import { countSolutions, generate, LEVELS, mulberry32, shuffle, type Grid, type Level } from './Sudoku';
+import KING_BANK from './kingBank.json';
+import { countSolutions, fromStr, generate, LEVELS, mulberry32, shuffle, type Grid, type Level } from './Sudoku';
 
 /** 채점 필터 없이 힌트 수만 맞춘 판 (기술마다 골고루 걸리도록) */
 function carve(target: number, rand: () => number): { puzzle: Grid; solution: Grid } {
@@ -103,18 +104,38 @@ describe('변성대왕 판 은행', () => {
         const steps = explainNext(grid, ruledOut);
         for (const st of steps) {
           if (st.id === 'forcing') forcing++;
-          // 끝까지 탐색(전수 대입)으로만 찾는 단계는 서술이 3단계다 — 추론으로 풀려야 하니 없어야 한다
-          if (st.id === 'forcing') expect(st.phases.length).toBe(4);
+          // 끝까지 탐색(전수 대입)으로만 찾는 단계는 없어야 한다 — 추론(가정 속 가정까지)으로 풀려야 하니까
+          if (st.id === 'forcing') expect(st.depth).toBeLessThan(3);
           for (const e of st.elim) ruledOut[e.i] |= 1 << (e.d - 1);
         }
         const p = steps[steps.length - 1].place!;
         expect(p.v).toBe(solution[p.i]);
         grid[p.i] = p.v;
       }
-      // 돌리거나 뒤집으면 기법을 찾는 순서가 달라져 횟수가 조금 바뀐다 (은행엔 10번 이상인 판만 넣었다)
-      expect(forcing).toBeGreaterThanOrEqual(5);
+      // 돌리거나 뒤집으면 기법을 찾는 순서가 달라져 횟수가 조금 바뀐다 (은행엔 20번 이상이거나 가정 속 가정이 필요한 판만 넣었다)
+      expect(forcing).toBeGreaterThanOrEqual(7);
     }
   }, 60000);
+
+  it('은행의 판은 모두 가정(포싱)이 20번 이상 필요하거나 가정 속 가정까지 필요한 극악 판이다', () => {
+    for (const str of KING_BANK) {
+      const grid = fromStr(str);
+      const ruledOut = new Array(81).fill(0);
+      let forcing = 0;
+      let nested = false;
+      while (grid.some((v) => !v)) {
+        const steps = explainNext(grid, ruledOut);
+        for (const st of steps) {
+          if (st.id === 'forcing') forcing++;
+          if (st.depth === 2) nested = true;
+          for (const e of st.elim) ruledOut[e.i] |= 1 << (e.d - 1);
+        }
+        const p = steps[steps.length - 1].place!;
+        grid[p.i] = p.v;
+      }
+      expect(forcing >= 20 || nested, str).toBe(true);
+    }
+  }, 120000);
 });
 
 describe('6×6 지옥·변성대왕', () => {

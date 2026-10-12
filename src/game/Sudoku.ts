@@ -206,9 +206,9 @@ export function generate(level: Level, rand: () => number = Math.random, size: S
 }
 
 /**
- * 변성대왕: 미리 골라 둔 판(scripts/gen-king.ts — AIC 로도 막혀 포싱 체인이 10번 이상 필요한 판)을 꺼내
+ * 변성대왕: 미리 골라 둔 이름난 극악 판(scripts/gen-king.ts — AIC 로도 막혀 포싱 체인이 20번 이상이거나 가정 속 가정까지 필요한 판)을 꺼내
  * 숫자 바꾸기(9!) × 돌리기·뒤집기(8) 로 변형한다. 변형해도 유일해·대칭·필요한 기술은 그대로라 난이도가 같다.
- * (그런 판은 수백 개 중 하나꼴이라 그 자리에서 만들면 몇 초씩 걸린다)
+ * (그런 판은 무작위로는 거의 안 나와서 그 자리에서 만들 수 없다)
  */
 function fromBank(rand: () => number): { puzzle: Grid; solution: Grid } {
   const src = fromStr(KING_BANK[Math.floor(rand() * KING_BANK.length)]);

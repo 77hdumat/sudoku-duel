@@ -219,10 +219,10 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
       any((d) => d.marks?.some((m) => m.tone === 'key')) && '<i class="key"></i>살펴볼 자리',
       any((d) => d.marks?.some((m) => m.tone === 'on') || d.ghosts?.length) && '<i class="on"></i>들어감',
       any((d) => d.marks?.some((m) => m.tone === 'off')) && '<i class="off"></i>안 들어감',
-      any((d) => d.links?.some((l) => l.strong)) && '<i class="ln strong"></i>실선: 한쪽이 아니면 다른 쪽',
-      any((d) => d.links?.some((l) => !l.strong)) && '<i class="ln weak"></i>점선: 둘 다는 불가',
+      any((d) => d.links?.some((l) => l.strong)) && '<i class="ln strong"></i>실선: 하나가 아니면 다른 하나가 답',
+      any((d) => d.links?.some((l) => !l.strong)) && '<i class="ln weak"></i>점선: 둘 다 답일 수는 없음',
       any((d) => d.assume) && '<i class="off"></i>가정',
-      any((d) => d.bad?.length) && `<i class="bad"></i>${st.id === 'fix' ? '틀린 칸' : '모순'}`,
+      any((d) => d.bad?.length) && `<i class="bad"></i>${st.id === 'fix' ? '틀린 칸' : '말이 안 되는 곳'}`,
       any((d) => d.elim?.length || d.blocked?.length) && '<i class="x">✕</i>못 들어감',
     ].filter(Boolean);
   };
@@ -257,7 +257,7 @@ export function showExplain(wrap: HTMLElement, steps: Step[], n: number, apply: 
     const legend = legendOf(st);
     const next = !lastPh ? '다음 ▶' : lastStep ? (st.place ? `✓ ${st.place.v} 기입` : '확인 ✓') : '다음 기법 ▶';
     panel.innerHTML = `${head}
-      <div class="ex-progress">기법 ${k + 1}/${steps.length} · 생각 ${ph + 1}/${st.phases.length}</div>
+      <div class="ex-progress">기법 ${k + 1}/${steps.length} · 설명 ${ph + 1}/${st.phases.length}</div>
       <p class="ex-scroll ex-text">${st.phases[ph].text}</p>
       ${legend.length ? `<div class="ex-legend">${legend.map((l) => `<span>${l}</span>`).join('')}</div>` : ''}
       <div class="ex-nav ex-five">

@@ -1,4 +1,4 @@
-import { candidates, countSolutions, geo, type Geo, type Grid } from './Sudoku';
+import { candidates, countSolutions, geo, solve, type Geo, type Grid } from './Sudoku';
 import type { TechId } from './Techniques';
 
 /**
@@ -28,8 +28,16 @@ function use(G: Geo): void {
   ({ units: UNITS, peers: PEERS, isPeer: IS_PEER, boxOf: BOX, all: ALL, n: N, cells: CELLS } = G);
 }
 
-const bits = (m: number): number[] => [...Array(9).keys()].filter((b) => m & (1 << b)).map((b) => 1 << b);
-const count = (m: number): number => bits(m).length;
+function bits(m: number): number[] {
+  const out: number[] = [];
+  for (let b = 1; b <= m; b <<= 1) if (m & b) out.push(b);
+  return out;
+}
+function count(m: number): number {
+  let n = 0;
+  for (; m; m &= m - 1) n++;
+  return n;
+}
 
 function* combos<T>(arr: T[], n: number, from = 0): Generator<T[]> {
   if (n === 0) return yield [];
@@ -86,8 +94,10 @@ export interface Step {
   grid: number[];
   elim: { i: number; d: number }[];
   place?: { i: number; v: number };
+  /** 포싱만: 0 기초로 따라감 · 1 사슬까지 · 2 가정 속 가정 · 3 끝까지 탐색(전수 대입) */
+  depth?: number;
 }
-type Info = { id: TechId; phases: Phase[] };
+type Info = { id: TechId; phases: Phase[]; depth?: number };
 
 /** explainNext 가 켜 두면 기술이 발동할 때마다 단계를 남긴다 (채점 중엔 null) */
 let say: ((st: Step) => void) | null = null;
@@ -110,18 +120,20 @@ export function J(word: string | number, withFinal: string, without: string): st
 /** 칸 이름: '3행 5열 칸' — 칸이라는 걸 분명히 (그냥 '3행 5열' 이라 쓰면 줄 이름으로 읽힌다) */
 const cell = (i: number) => `${Math.floor(i / N) + 1}행 ${(i % N) + 1}열 칸`;
 const BOX9 = ['왼쪽 위', '가운데 위', '오른쪽 위', '왼쪽 가운데', '한가운데', '오른쪽 가운데', '왼쪽 아래', '가운데 아래', '오른쪽 아래'];
-/** 유닛 이름: '3번째 가로줄' · '5번째 세로줄' · '왼쪽 위 박스' (행·열 용어를 몰라도 읽히게) */
+/** 몇 번째: 1 → '첫', 나머지는 숫자 그대로 ('첫 번째' · '3번째') */
+const nth = (k: number) => (k === 1 ? '첫 번째' : `${k}번째`);
+/** 유닛 이름: '위에서 3번째 가로줄' · '왼쪽에서 5번째 세로줄' · '왼쪽 위 박스' (행·열 용어를 몰라도 판에서 바로 찾게) */
 function unitName(u: number[]): string {
   const k = UNITS.indexOf(u);
-  if (k < N) return `${k + 1}번째 가로줄`;
-  if (k < 2 * N) return `${k - N + 1}번째 세로줄`;
+  if (k < N) return `위에서 ${nth(k + 1)} 가로줄`;
+  if (k < 2 * N) return `왼쪽에서 ${nth(k - N + 1)} 세로줄`;
   return N === 9 ? `${BOX9[k - 2 * N]} 박스` : `${k - 2 * N + 1}번 박스`;
 }
-/** 같은 종류 줄 여러 개: '2·3·4번째 세로줄' */
+/** 같은 종류 줄 여러 개: '왼쪽에서 2·3·4번째 세로줄' */
 function lineNames(us: number[][]): string {
   const ks = us.map((u) => UNITS.indexOf(u));
-  if (ks.every((k) => k < N)) return `${ks.map((k) => k + 1).join('·')}번째 가로줄`;
-  if (ks.every((k) => k >= N && k < 2 * N)) return `${ks.map((k) => k - N + 1).join('·')}번째 세로줄`;
+  if (ks.every((k) => k < N)) return `위에서 ${ks.map((k) => k + 1).join('·')}번째 가로줄`;
+  if (ks.every((k) => k >= N && k < 2 * N)) return `왼쪽에서 ${ks.map((k) => k - N + 1).join('·')}번째 세로줄`;
   return us.map(unitName).join('·');
 }
 const list = (m: number) => bits(m).map(digitOf).join('·');
@@ -188,15 +200,21 @@ function singles(s: State): boolean {
         const [row, col, box] = UNITS.filter((u) => u.includes(i));
         const seen = (u: number[]) => u.filter((k) => s.g[k] && k !== i);
         const has = [row, col, box].filter((u) => seen(u).length).map((u) => `${unitName(u)}에는 ${nums(seen(u).map((k) => s.g[k]))}`);
+        // 이미 놓인 숫자로는 안 빠지고, 앞 단계(교차로·사슬 …)에서 지운 후보
+        const used = PEERS[i].reduce((m, k) => (s.g[k] ? m | (1 << (s.g[k] - 1)) : m), 0);
+        const gone = ALL & ~used & ~(1 << (v - 1));
         return {
           id: 'naked-single',
           phases: [
             {
-              text: `${cell(i)}(테두리)에 들어갈 숫자를 찾아요. 같은 가로줄·세로줄·박스(색칠한 곳)에 이미 있는 숫자는 여기 못 와요.`,
+              text: `${cell(i)}(테두리)에 들어갈 숫자를 찾아봐요. 같은 가로줄·세로줄·박스(색칠한 곳)에 이미 있는 숫자는 이 칸에 올 수 없어요.`,
               draw: { cells: [i], area: PEERS[i] },
             },
-            { text: `${J(has.join(', '), '이', '가')} 이미 있어요.`, draw: { cells: [...seen(row), ...seen(col), ...seen(box)] } },
-            { text: `1부터 ${N}까지 중에 아직 안 나온 숫자는 ${v} 하나뿐이에요. 그래서 이 칸은 ${v}!`, draw: { place: { i, v } } },
+            { text: `${J(has.join(', '), '이', '가')} 이미 있어요. 그 숫자들은 모두 빼요.`, draw: { cells: [...seen(row), ...seen(col), ...seen(box)] } },
+            ...(gone
+              ? [{ text: `또 ${J(list(gone), '은', '는')} 앞에서 풀이하면서 이 칸에 올 수 없다고 이미 지웠어요.` }]
+              : []),
+            { text: `1부터 ${N}까지 중에서 남은 숫자는 ${v} 하나뿐이에요. 그래서 이 칸은 ${J(v, '이에요', '예요')}!`, draw: { place: { i, v } } },
           ],
         };
       });
@@ -209,15 +227,18 @@ function singles(s: State): boolean {
       return put(s, i, v, () => {
         const others = u.filter((k) => !s.g[k] && k !== i);
         const blockers = [...new Set(others.flatMap((k) => PEERS[k].filter((p) => s.g[p] === v && !u.includes(p))))];
+        // 이미 놓인 v 에 막히지 않았는데도 v 후보가 없는 칸 = 앞 단계에서 지운 칸
+        const struck = others.filter((k) => !PEERS[k].some((p) => s.g[p] === v));
+        const why = [
+          blockers.length ? `테두리 칸에 이미 ${J(v, '이', '가')} 있어서, 그 칸과 같은 줄·박스에는 ${J(v, '이', '가')} 또 올 수 없어요` : '',
+          struck.length ? `${struck.length}칸은 앞에서 풀이하면서 ${v} 후보를 이미 지웠어요` : '',
+        ].filter(Boolean);
         return {
           id: 'hidden-single',
           phases: [
-            { text: `${unitName(u)}(색칠한 곳)에도 ${J(v, '이', '가')} 꼭 한 번 들어가요. 어느 칸에 갈 수 있을까요?`, draw: { area: u } },
-            {
-              text: `테두리 칸에 이미 ${J(v, '이', '가')} 있어요. 그 줄과 박스에는 ${J(v, '을', '를')} 또 못 쓰니까 ✕ 칸은 탈락!`,
-              draw: { cells: blockers, blocked: others },
-            },
-            { text: `${J(v, '이', '가')} 들어갈 수 있는 곳은 ${cell(i)} 하나만 남았어요. 그래서 여기가 ${v}!`, draw: { place: { i, v } } },
+            { text: `${unitName(u)}(색칠한 곳)에는 ${J(v, '이', '가')} 꼭 한 번 들어가야 해요. 어느 칸에 들어갈 수 있을까요?`, draw: { area: u } },
+            { text: `${why.join('. 그리고 ')}. 그래서 ✕ 칸에는 ${J(v, '이', '가')} 못 들어가요.`, draw: { cells: blockers, blocked: others } },
+            { text: `${J(v, '이', '가')} 들어갈 수 있는 곳은 ${cell(i)} 하나만 남았어요. 그래서 여기가 ${J(v, '이에요', '예요')}!`, draw: { place: { i, v } } },
           ],
         };
       });
@@ -226,36 +247,46 @@ function singles(s: State): boolean {
 }
 
 /** 교차로: 한 유닛 안의 숫자 v 자리가 전부 다른 유닛과 겹치면, 그 다른 유닛의 나머지 칸에서 v 를 지운다 */
+const CROSS = new Map<number[][], [number[], number[], number[]][]>();
+/** 박스와 줄이 겹치는 [박스, 줄, 겹친 칸] — 판 크기마다 한 번만 구한다 */
+function crossings(): [number[], number[], number[]][] {
+  let out = CROSS.get(UNITS);
+  if (!out) {
+    out = UNITS.slice(2 * N).flatMap((box) =>
+      UNITS.slice(0, 2 * N)
+        .map((line): [number[], number[], number[]] => [box, line, box.filter((i) => line.includes(i))])
+        .filter(([, , shared]) => shared.length),
+    );
+    CROSS.set(UNITS, out);
+  }
+  return out;
+}
+
 function intersections(s: State): boolean {
-  for (const box of UNITS.slice(2 * N))
-    for (const line of UNITS.slice(0, 2 * N)) {
-      const shared = box.filter((i) => line.includes(i));
-      if (!shared.length) continue;
-      for (const bit of bits(ALL))
-        for (const [a, b] of [
-          [box, line],
-          [line, box],
-        ]) {
-          const inA = a.filter((i) => s.c[i] & bit);
-          const v = digitOf(bit);
-          if (
-            inA.length &&
-            inA.every((i) => shared.includes(i)) &&
-            fire(s, b.filter((i) => !shared.includes(i)), bit, (elim) => ({
-              id: 'intersection',
-              phases: [
-                { text: `${unitName(a)}에서 ${J(v, '이', '가')} 들어갈 수 있는 자리(파란 동그라미)를 찾아봐요.`, draw: { area: a, marks: inA.map((i) => ({ i, d: v, tone: 'key' })) } },
-                {
-                  text: `그 자리가 전부 ${J(unitName(b), '과', '와')} 겹치는 칸에 몰려 있어요. 그러니 ${unitName(a)}의 ${J(v, '은', '는')} 어디에 들어가든 ${unitName(b)} 위에 놓여요.`,
-                  draw: { area: b, cells: inA },
-                },
-                { text: `${unitName(b)}에는 ${J(v, '이', '가')} 한 번만 들어가는데, 그 자리를 방금 본 칸들이 맡았어요. 그래서 ${unitName(b)}의 나머지 칸에서는 ${v} 후보를 지워요.`, draw: { elim } },
-              ],
-            }))
-          )
-            return true;
-        }
-    }
+  for (const [box, line, shared] of crossings())
+    for (const bit of bits(ALL))
+      for (const [a, b] of [
+        [box, line],
+        [line, box],
+      ]) {
+        const inA = a.filter((i) => s.c[i] & bit);
+        if (!inA.length || !inA.every((i) => shared.includes(i))) continue;
+        const v = digitOf(bit);
+        if (
+          fire(s, b.filter((i) => !shared.includes(i)), bit, (elim) => ({
+            id: 'intersection',
+            phases: [
+              { text: `${unitName(a)}(색칠한 곳)에서 ${J(v, '이', '가')} 들어갈 수 있는 자리(파란 동그라미)를 찾아봐요.`, draw: { area: a, marks: inA.map((i) => ({ i, d: v, tone: 'key' })) } },
+              {
+                text: `그 자리가 모두 ${J(unitName(b), '과', '와')} 겹치는 칸에 모여 있어요. 그러니 ${unitName(a)}의 ${J(v, '은', '는')} 어디에 들어가든 ${unitName(b)} 안에 들어가요.`,
+                draw: { area: b, cells: inA },
+              },
+              { text: `${unitName(b)}에도 ${J(v, '은', '는')} 한 번만 들어갈 수 있는데, 그 자리를 방금 본 칸 중 하나가 차지해요. 그래서 ${unitName(b)}의 나머지 칸에서는 ${v} 후보를 지워요.`, draw: { elim } },
+            ],
+          }))
+        )
+          return true;
+      }
   return false;
 }
 
@@ -264,8 +295,8 @@ function subsets(s: State): boolean {
     const empty = u.filter((i) => s.c[i]);
     const digits = bits(empty.reduce((m, i) => m | s.c[i], 0));
     for (let n = 2; n <= 4 && n < empty.length; n++) {
-      // 드러난: n칸의 후보를 합쳐도 n개 → 그 숫자들은 유닛의 다른 칸에 못 온다
-      for (const cells of combos(empty, n)) {
+      // 드러난: n칸의 후보를 합쳐도 n개 → 그 숫자들은 유닛의 다른 칸에 못 온다 (후보가 n개 넘는 칸은 낄 수 없다)
+      for (const cells of combos(empty.filter((i) => count(s.c[i]) <= n), n)) {
         const m = cells.reduce((acc, i) => acc | s.c[i], 0);
         if (
           count(m) === n &&
@@ -284,7 +315,8 @@ function subsets(s: State): boolean {
           return true;
       }
       // 숨겨진: n개 숫자가 n칸에만 → 그 칸들의 다른 후보를 지운다
-      for (const ds of combos(digits, n)) {
+      // 숨겨진: 자리가 n곳 넘는 숫자는 낄 수 없다
+      for (const ds of combos(digits.filter((d) => empty.filter((i) => s.c[i] & d).length <= n), n)) {
         const m = ds.reduce((a, b) => a | b, 0);
         const cells = empty.filter((i) => s.c[i] & m);
         if (
@@ -344,14 +376,15 @@ function fish(s: State): boolean {
                 const [[p1, p2], [q1, q2]] = corners;
                 // 같은 열끼리 짝 맞추기
                 const [d1, d2] = unitWith(p1, q1) ? [q2, q1] : [q1, q2];
+                const [bk, ck] = UNITS.indexOf(base[0]) < N ? ['가로줄', '세로줄'] : ['세로줄', '가로줄'];
                 phases.push(
-                  { text: `경우 ①: ${cell(p1)}에 ${J(v, '이', '가')} 들어가면 → 다른 줄의 ${J(v, '은', '는')} 같은 ${UNITS.indexOf(base[0]) < N ? '세로줄' : '가로줄'}을 피해 ${cell(d1)}로 가야 해요.`, temp: { ghosts: [p1, d1].map((i) => ({ i, v, tone: 'on' })) } },
-                  { text: `경우 ②: ${cell(p2)}에 ${J(v, '이', '가')} 들어가면 → 다른 줄의 ${J(v, '은', '는')} ${cell(d2)}로 가요.`, temp: { ghosts: [p2, d2].map((i) => ({ i, v, tone: 'on' })) } },
+                  { text: `경우 ①: ${cell(p1)}에 ${J(v, '이', '가')} 들어가면 → 다른 ${bk}의 ${J(v, '은', '는')} 같은 ${ck}을 피해 ${cell(d1)}으로 가야 해요.`, temp: { ghosts: [p1, d1].map((i) => ({ i, v, tone: 'on' })) } },
+                  { text: `경우 ②: ${cell(p2)}에 ${J(v, '이', '가')} 들어가면 → 다른 ${bk}의 ${J(v, '은', '는')} ${cell(d2)}으로 가요.`, temp: { ghosts: [p2, d2].map((i) => ({ i, v, tone: 'on' })) } },
                   { text: `어느 경우든 ${cn}에 들어갈 ${J(v, '은', '는')} 이 네 칸 중에서 나와요.` },
                 );
               } else
                 phases.push({
-                  text: `${n}개 줄이 각각 ${J(v, '을', '를')} 하나씩 가져가는데, 그 자리가 ${cn} 안에만 있어요. 그래서 ${cn}에 들어갈 ${J(v, '은', '는')} 모두 동그라미 자리에서 나와요.`,
+                  text: `이 ${n === 3 ? '세' : '네'} 줄에는 ${J(v, '이', '가')} 하나씩 꼭 들어가야 하니, ${J(v, '이', '가')} ${n}개 놓여요. 그 ${n}개가 모두 ${cn} 위에 놓이니까, ${cn}에 들어갈 ${J(v, '은', '는')} 모두 동그라미 자리에서 채워져요.`,
                 });
               phases.push({ text: `그러니 ${cn}의 나머지 칸에는 ${J(v, '이', '가')} 들어갈 수 없어요. 지워요.`, draw: { elim } });
               return { id: n === 2 ? 'x-wing' : n === 3 ? 'swordfish' : 'jellyfish', phases };
@@ -399,7 +432,7 @@ function wings(s: State): boolean {
               text: `경우 ②: 축이 ${J(Y, '이', '가')} 되면 → ${J(cell(b), '은', '는')} ${J(Y, '이', '가')} 될 수 없으니 ${J(Z, '이', '가')} 돼요.`,
               temp: { ghosts: [{ i: p, v: Y, tone: 'on' }, { i: b, v: Z, tone: 'on' }], links: [{ a: [p, Y], b: [b, Y], strong: false }] },
             },
-            ...(xyz ? [{ text: `경우 ③: 축이 ${J(Z, '이', '가')} 되면 → 축 자신이 ${J(Z, '이에요', '예요')}.`, temp: { ghosts: [{ i: p, v: Z, tone: 'on' as const }] } }] : []),
+            ...(xyz ? [{ text: `경우 ③: 축이 ${J(Z, '이', '가')} 되면 → 축 칸 자체가 ${J(Z, '이에요', '예요')}.`, temp: { ghosts: [{ i: p, v: Z, tone: 'on' as const }] } }] : []),
             {
               text: `어떤 경우든 ${xyz ? '세 칸' : '두 집게'} 중 한 곳은 꼭 ${J(Z, '이', '가')} 돼요. 그러니 ${xyz ? '세 칸을' : '두 집게를'} 동시에 보는 칸(색칠한 곳)에는 ${J(Z, '이', '가')} 들어갈 수 없어요.`,
               draw: { area: victims, elim },
@@ -493,11 +526,11 @@ function finnedXWing(s: State): boolean {
                   draw: { area: lines, marks: [...body.map((i) => ({ i, d: v, tone: 'key' as Tone })), ...fins.map((i) => ({ i, d: v, tone: 'on' as Tone }))] },
                 },
                 {
-                  text: `경우 ①: 지느러미 자리가 ${J(v, '이', '가')} 된다면 → 같은 ${unitName(box)}의 다른 칸에는 ${J(v, '이', '가')} 못 와요.`,
+                  text: `경우 ①: ${J(fins.length > 1 ? '지느러미 중 한 곳' : '지느러미', '이', '가')} ${J(v, '이', '가')} 된다면 → 같은 ${unitName(box)}의 다른 칸에는 ${J(v, '이', '가')} 못 와요.`,
                   temp: { area: box, ghosts: [{ i: fins[0], v, tone: 'on' }] },
                 },
                 {
-                  text: `경우 ②: 지느러미가 ${J(v, '이', '가')} 아니라면 → 남은 자리끼리 진짜 X-윙이 돼서, ${lineNames([cover[c1], cover[c2]])}의 다른 칸에는 ${J(v, '이', '가')} 못 와요.`,
+                  text: `경우 ②: 지느러미가 ${J(v, '이', '가')} 아니라면 → 남은 자리끼리 진짜 X-윙이 돼요. 그러면 ${lineNames([cover[c1], cover[c2]])}의 다른 칸에는 ${J(v, '이', '가')} 못 와요.`,
                   temp: { area: covered, cells: body },
                 },
                 { text: `둘 중 어느 경우든, ${unitName(box)} 안이면서 그 두 줄 위에 있는 칸에는 ${J(v, '이', '가')} 못 와요. 그 칸에서 지워요.`, draw: { elim } },
@@ -521,14 +554,14 @@ function linkText(l: Link, first: boolean, fresh: boolean): string {
   const [ai, ad] = l.a;
   const [bi, bd] = l.b;
   const same = ai === bi;
-  // 서술이 새로 시작될 땐 '이 칸' 이 무엇인지 모르니 칸 이름으로
-  const who = same && !fresh ? '이 칸은' : J(cell(bi), '은', '는');
+  // 서술이 새로 시작될 땐 '이 칸' 이 무엇인지 모르니 칸 이름으로 (사슬 첫 문장은 바로 앞에 칸 이름이 나온다)
+  const who = same && (first || !fresh) ? '이 칸은' : J(cell(bi), '은', '는');
   if (l.strong) {
-    const why = same ? `이 칸엔 ${J(ad, '과', '와')} ${bd}만 들어갈 수 있으니까` : `${unitName(unitWith(ai, bi))}에서 ${J(ad, '이', '가')} 들어갈 곳은 이 두 칸뿐이니까`;
+    const why = same ? `이 칸에는 ${J(ad, '과', '와')} ${bd}만 들어갈 수 있으니까` : `${unitName(unitWith(ai, bi))}에서 ${J(ad, '이', '가')} 들어갈 곳은 이 두 칸뿐이니까`;
     const head = first ? `${J(cell(ai), '이', '가')} ${J(ad, '이', '가')} 아니면 →` : '그러면';
     return `${head} ${who} ${J(bd, '이에요', '예요')} (${why})`;
   }
-  const why = same ? '한 칸엔 숫자 하나만 들어가니까' : '같은 줄이나 박스라서';
+  const why = same ? '한 칸에는 숫자 하나만 들어가니까' : `둘 다 ${unitName(unitWith(ai, bi))}에 있으니까`;
   const head = first ? `${J(cell(ai), '이', '가')} ${J(ad, '이', '가')} 된다면 →` : '그러면';
   return `${head} ${who} ${J(bd, '이', '가')} 될 수 없어요 (${why})`;
 }
@@ -584,7 +617,7 @@ function chainFrom(s: State, [c0, b0]: Node, strong: (n: Node) => Node[], weak: 
   };
   const d0 = digitOf(b0);
   const start: Phase = {
-    text: `${J(cell(c0), '이', '가')} ${J(d0, '이', '가')} 아니라고 해 볼게요. 그러면 어떻게 되는지 차례로 따라가요.`, draw: { marks: [{ i: c0, d: d0, tone: 'off' }] } };
+    text: `${J(cell(c0), '이', '가')} ${J(d0, '이', '가')} 아니라고 해 볼게요. 그러면 어떤 일이 생기는지 차례로 따라가요.`, draw: { marks: [{ i: c0, d: d0, tone: 'off' }] } };
   const clash = [...on.keys()].find((k) => off.has(k));
   if (clash != null) {
     const node: Node = [Math.floor(clash / 512), clash % 512];
@@ -592,15 +625,25 @@ function chainFrom(s: State, [c0, b0]: Node, strong: (n: Node) => Node[], weak: 
       const nd = digitOf(node[1]);
       return {
         id,
-        phases: [
-          start,
-          ...walk(path(node, true)).map((p, k) => (k ? p : { ...p, text: `첫 번째 길: ${p.text}` })),
-          ...walk(path(node, false)).map((p, k) => (k ? p : { ...p, text: `두 번째 길: ${p.text}` })),
-          {
-            text: `두 길을 따라가 보니 ${cell(node[0])}에 대해 '${J(nd, '이에요', '예요')}'와 '${J(nd, '이', '가')} 아니에요'가 동시에 나왔어요. 말이 안 되죠! 처음 가정이 틀렸으니 ${J(cell(c0), '은', '는')} ${J(d0, '이에요', '예요')}.`,
-            draw: { bad: [node[0]], place: { i: c0, v: d0 } },
-          },
-        ],
+        phases:
+          key(node) === key([c0, b0])
+            ? [
+                start,
+                ...walk(path(node, true)),
+                {
+                  text: `따라가 보니 처음에 '${J(d0, '이', '가')} 아니다'라고 한 ${J(cell(c0), '이', '가')} 결국 ${J(d0, '이', '가')} 돼야 한다고 나왔어요. 말이 안 되죠! 처음 가정이 틀렸으니 ${J(cell(c0), '은', '는')} ${J(d0, '이에요', '예요')}.`,
+                  draw: { bad: [c0], place: { i: c0, v: d0 } },
+                },
+              ]
+            : [
+                start,
+                ...walk(path(node, true)).map((p, k) => (k ? p : { ...p, text: `첫 번째 길: ${p.text}` })),
+                ...walk(path(node, false)).map((p, k) => (k ? p : { ...p, text: `두 번째 길: ${p.text}` })),
+                {
+                  text: `두 길을 따라가 보니 ${cell(node[0])}에 대해 '${J(nd, '이에요', '예요')}'와 '${J(nd, '이', '가')} 아니에요'가 한꺼번에 나왔어요. 말이 안 되죠! 처음 가정이 틀렸으니 ${J(cell(c0), '은', '는')} ${J(d0, '이에요', '예요')}.`,
+                  draw: { bad: [node[0]], place: { i: c0, v: d0 } },
+                },
+              ],
       };
     });
   }
@@ -691,15 +734,21 @@ function uniqueness(s: State): boolean {
     const t = triple[0];
     const row = UNITS[Math.floor(t / N)];
     const b = bits(s.c[t]).find((bit) => row.filter((i) => s.c[i] & bit).length === 3);
-    if (b) {
+    // b 를 빼고 나면 모든 줄·박스에서 모든 숫자가 0곳 아니면 딱 2곳이어야 진짜 BUG (그래야 'b 가 아니면 답이 하나가 아니다' 가 맞다)
+    const without = (i: number) => (i === t ? s.c[i] & ~(b ?? 0) : s.c[i]);
+    const bug = b && UNITS.every((u) => bits(ALL).every((d) => [0, 2].includes(u.filter((i) => without(i) & d).length)));
+    if (b && bug) {
       const v = digitOf(b);
       const tc = list(s.c[t]);
       return put(s, t, v, () => ({
         id: 'bug',
         phases: [
-          { text: `빈칸들의 후보가 전부 2개씩인데, ${cell(t)}만 ${tc} 세 개예요.`, draw: { cells: [t], area: open } },
-          { text: `모든 칸이 후보 2개면 답이 여러 개가 되는 모양이라 그럴 수 없어요. ${unitName(row)}에서 세 번 나오는 ${J(v, '이', '가')} 이 칸의 '남는' 숫자예요.`, draw: { area: row } },
-          { text: `그래서 ${J(cell(t), '은', '는')} ${J(v, '이에요', '예요')}.`, draw: { place: { i: t, v } } },
+          { text: `빈칸의 후보가 모두 2개씩인데, ${cell(t)}만 ${tc} 세 개예요.`, draw: { cells: [t], area: open } },
+          {
+            text: `${unitName(row)}에서 후보 ${J(v, '은', '는')} 세 번 나오고, 다른 숫자는 모두 두 번씩 나와요. 만약 이 칸이 ${J(v, '이', '가')} 아니라면 ${v} 후보를 지워야 하고, 그러면 판 전체가 '모든 칸 후보 2개, 모든 줄·박스에 숫자마다 후보 2개'가 돼요.`,
+            draw: { area: row },
+          },
+          { text: `그런 판은 두 후보를 서로 맞바꿔도 말이 돼서 답이 하나로 정해지지 않아요. 스도쿠 답은 딱 하나니까, ${J(cell(t), '은', '는')} ${J(v, '이에요', '예요')}.`, draw: { place: { i: t, v } } },
         ],
       }));
     }
@@ -742,29 +791,71 @@ function propagate(s: State, deep: boolean): void {
     if (!(singles(s) || intersections(s) || subsets(s) || (deep && (fish(s) || wings(s) || wWing(s) || xChains(s) || xyChains(s))))) return;
 }
 
-/**
- * 포싱 체인 (가정 → 모순): 한 후보를 넣어 보고 기술로 따라가다 모순이 나면 그 후보를 지운다.
- * 사람 기술로 막힌 변성대왕 판을 계속 풀기 위한 마지막 수단. 얕게(기초 기술) → 깊게(사슬) → 끝까지 탐색 순으로 찾는다.
- */
-function forcing(s: State): boolean {
-  const tries = [...Array(CELLS).keys()]
+/** 지금 남은 후보를 [칸, 숫자] 로 — 후보가 적은 칸부터 (사람도 두 개뿐인 칸부터 가정해 본다) */
+const triesOf = (s: State): Node[] =>
+  [...Array(CELLS).keys()]
     .filter((i) => s.c[i])
     .sort((a, b) => count(s.c[a]) - count(s.c[b]))
     .flatMap((i) => bits(s.c[i]).map((b): Node => [i, b]));
+
+/** 판·후보를 그대로 베낀 상태 (가정해 볼 연습장) */
+function copyOf(s: State): State {
+  const t = new State(s.g);
+  t.c.splice(0, CELLS, ...s.c);
+  return t;
+}
+
+/**
+ * 가정 속 가정: 사슬까지 써서 막히면, 그 안에서 후보 하나를 또 넣어 보고 모순이 나면 지운 뒤 계속 푼다.
+ * 대회 극악 판(Easter Monster · Golden Nugget …)을 전수 대입 없이 추론만으로 푸는 마지막 단계. 안에서 지운 후보 수를 돌려준다.
+ */
+function nestedPropagate(t: State): number {
+  let inner = 0;
+  for (;;) {
+    propagate(t, true);
+    if (broken(t) || !t.g.some((v) => !v)) return inner;
+    // 안쪽 가정은 기초 방법으로 먼저 훑고, 안 되면 사슬까지 (기초만으로 끝나는 게 대부분이라 빠르다)
+    const hit = [false, true].some((deep) =>
+      triesOf(t).some(([i, b]) => {
+        const u = copyOf(t);
+        u.place(i, digitOf(b));
+        propagate(u, deep);
+        if (!broken(u)) return false;
+        t.c[i] &= ~b;
+        inner++;
+        return true;
+      }),
+    );
+    if (!hit) return inner;
+  }
+}
+
+/**
+ * 포싱 체인 (가정 → 모순): 한 후보를 넣어 보고 기술로 따라가다 모순이 나면 그 후보를 지운다.
+ * 사람 기술로 막힌 변성대왕 판을 계속 풀기 위한 마지막 수단.
+ * 얕게(기초 기술) → 깊게(사슬) → 가정 속 가정 → 끝까지 탐색 순으로 찾는다.
+ */
+function forcing(s: State): boolean {
+  // 답과 같은 후보는 가정해 봐야 모순이 안 나니 건너뛴다 (찾는 순서·결과는 같고 훨씬 빠르다)
+  const answer = solve(s.g);
+  const tries = triesOf(s).filter(([i, b]) => !answer || answer[i] !== digitOf(b));
   const quiet = say;
-  for (const depth of [0, 1, 2]) {
+  for (const depth of [0, 1, 2, 3]) {
     for (const [i, b] of tries) {
-      const t = new State(s.g);
-      t.c.splice(0, CELLS, ...s.c);
+      const t = copyOf(s);
       say = null;
       let bad: { cells: number[]; why: string } | null = null;
+      let inner = 0;
       try {
         t.place(i, digitOf(b));
         t.log = [];
         if (depth < 2) {
           propagate(t, depth === 1);
           bad = broken(t);
-        } else if (countSolutions(t.g) === 0) bad = { cells: [i], why: '끝까지 따라가도 답이 나오지 않아요' };
+        } else if (depth === 2) {
+          inner = nestedPropagate(t);
+          bad = broken(t);
+        } else if (countSolutions(t.g) === 0) bad = { cells: [i], why: '끝까지 하나하나 넣어 봐도 답이 나오지 않아요' };
       } finally {
         say = quiet;
       }
@@ -772,18 +863,31 @@ function forcing(s: State): boolean {
       const v = digitOf(b);
       const trail = (t.log ?? []).map((k) => ({ i: k, v: t.g[k] }));
       const { why, cells: badCells } = bad;
-      const how = depth === 0 ? '쉬운 방법' : '사슬까지 쓰는 방법';
+      const how = depth === 0 ? '기초 방법(하나 · 교차로 · 부분집합)' : '사슬까지 쓰는 방법';
+      const filled = trail.length ? `초록 숫자 ${trail.length}개가 차례로 정해져요` : '숫자를 하나도 더 채우기 전에 바로 문제가 생겨요';
       return fire(s, [i], b, (elim) => ({
         id: 'forcing',
+        depth,
         phases: [
-          { text: `여기서부터는 그냥은 더 못 풀어요. 그래서 ${cell(i)}에 ${J(v, '이', '가')} 들어간다고 일단 가정해 볼게요 (주황).`, draw: { assume: { i, v } } },
+          {
+            text: `지금까지 배운 방법으로는 더 나아갈 수 없어요. 그래서 '${cell(i)}에 ${J(v, '이', '가')} 들어간다면?' 하고 일단 가정해 볼게요 (주황 숫자).`,
+            draw: { assume: { i, v } },
+          },
           ...(depth < 2
             ? [
-                { text: `그렇다고 치고 ${how}로 계속 풀어 나가면, 초록 숫자 ${trail.length}개가 차례로 채워져요. (머릿속으로만 넣어 보는 숫자라 판에는 쓰지 않아요)`, draw: { trail } },
-                { text: `그런데 ${why}! (빨간 곳) 말이 안 되는 상황이에요.`, draw: { bad: badCells } },
+                { text: `그렇다고 치고 ${how}으로 계속 풀어 보면, ${filled}. (머릿속으로만 해 보는 거라 판에는 쓰지 않아요)`, draw: { trail } },
+                { text: `그런데 ${why}! (빨간 곳) 말이 안 되죠.`, draw: { bad: badCells } },
               ]
-            : [{ text: `${why}. (사람이 찾기엔 아주 어려운 단계예요)`, draw: { bad: badCells } }]),
-          { text: `처음 가정이 틀렸다는 뜻이에요. 그러니 ${J(cell(i), '은', '는')} ${J(v, '이', '가')} 아니에요. 찍은 게 아니라 '안 된다'는 걸 확인한 거예요.`, draw: { elim } },
+            : depth === 2
+              ? [
+                  { text: `그렇다고 치고 사슬까지 써서 풀다가 또 막히면, 그 안에서 한 번 더 가정해 봐요 ('가정 속 가정'). 그 작은 가정이 말이 안 되면 그 후보를 지우고 계속 풀어요. 이렇게 후보 ${inner}개를 지워 나가면 ${filled}.`, draw: { trail } },
+                  { text: `그러다 결국 ${why}! (빨간 곳) 말이 안 되죠.`, draw: { bad: badCells } },
+                ]
+              : [{ text: `${why}. (사람이 머리로 따라가기엔 아주 긴 단계예요)`, draw: { bad: badCells } }]),
+          {
+            text: `맨 처음 가정이 틀렸다는 뜻이에요. 그러니 ${cell(i)}에는 ${J(v, '이', '가')} 들어갈 수 없어요. 찍은 게 아니라 '이건 안 된다'는 걸 확인한 거예요.`,
+            draw: { elim },
+          },
         ],
       }));
     }
